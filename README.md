@@ -1,5 +1,7 @@
 # devagent
 
+> **[中文](README.zh-CN.md)** · English
+
 > **Connect any device to your AI.** A lightweight Go bridge that lets LLMs discover and control LAN devices — bare-metal MCUs, PCs, OpenWrt routers — over the [MCP](https://modelcontextprotocol.io) protocol.
 
 [![CI](https://github.com/fr7shng/devagent/actions/workflows/ci.yml/badge.svg)](https://github.com/fr7shng/devagent/actions)

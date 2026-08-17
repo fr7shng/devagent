@@ -14,4 +14,4 @@ DAEMON_PID=$!
 trap 'kill $DAEMON_PID 2>/dev/null' EXIT INT TERM
 
 echo "==> Starting sidecar (stdio MCP). Press Ctrl+C to exit and stop the daemon."
-"$ROOT/bin/devagent" -mode sidecar -global-config "$ROOT/configs/devagent.yaml"
+"$ROOT/bin/devagent" -mode sidecar -global-config "$ROOT/configs/demo-sidecar.yaml"

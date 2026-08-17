@@ -16,7 +16,7 @@ $daemon = Start-Process -FilePath "$root\bin\devagent.exe" `
 
 Write-Host "==> Starting sidecar (stdio MCP). Press Ctrl+C to exit and stop the daemon." -ForegroundColor Cyan
 try {
-    & "$root\bin\devagent.exe" -mode sidecar -global-config configs/devagent.yaml
+    & "$root\bin\devagent.exe" -mode sidecar -global-config configs/demo-sidecar.yaml
 } finally {
     if ($daemon -and -not $daemon.HasExited) { Stop-Process -Id $daemon.Id -Force }
 }

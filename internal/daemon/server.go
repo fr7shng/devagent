@@ -325,7 +325,15 @@ func replacePlaceholder(s, key string, val any) string {
 }
 
 func (ds *DaemonServer) startMDNS() error {
-	service, err := mdns.NewMDNSService(ds.gatewayID, "_devagent._tcp", "", "", ds.port, nil, []string{"gateway=" + ds.gatewayID})
+	txt := []string{
+		"gateway=" + ds.gatewayID,
+		"version=0.4.0",
+		"protocols=urpc,dcp",
+	}
+	if ds.cfg.TLS.CertPath != "" {
+		txt = append(txt, "tls=1")
+	}
+	service, err := mdns.NewMDNSService(ds.gatewayID, "_devagent._tcp", "", "", ds.port, nil, txt)
 	if err != nil {
 		return fmt.Errorf("create mDNS service: %w", err)
 	}

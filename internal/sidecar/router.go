@@ -70,7 +70,13 @@ func (r *Router) Discover(ctx context.Context) {
 			if entry.AddrV4 == nil {
 				continue
 			}
-			gwURL := fmt.Sprintf("http://%s:%d", entry.AddrV4.String(), entry.Port)
+			scheme := "http"
+			for _, info := range entry.InfoFields {
+				if info == "tls=1" {
+					scheme = "https"
+				}
+			}
+			gwURL := fmt.Sprintf("%s://%s:%d", scheme, entry.AddrV4.String(), entry.Port)
 			parts := strings.SplitN(entry.Name, ".", 2)
 			gwID := parts[0]
 			slog.Info("发现网关", "gateway_id", gwID, "url", gwURL)

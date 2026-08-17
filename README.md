@@ -224,6 +224,8 @@ docker compose up daemon
 
 **Why is `read_temp` only acknowledged?** The 5-byte uRPC ACK has no payload channel — uRPC is a command-only protocol for tiny MCUs. Use the DCP path when you need values back.
 
+**Why are there two MCP entry points?** The sidecar is the standard path: it discovers daemons, dispatches asynchronously, and returns a `job_id` you poll. The daemon also exposes a synchronous MCP server (SSE) for direct single-host debugging — it waits for the serial ACK in-call and does not use the job table. Use the sidecar unless you're debugging a single device on the same host.
+
 ## License
 
 [Apache-2.0](LICENSE). The ESP32 firmware under `internal/lite` is Apache-2.0 as well.

@@ -78,6 +78,25 @@ func TestRouteTable_AllDevicesStatus(t *testing.T) {
 	}
 }
 
+func TestRouteTable_RegisterDoesNotRefreshHeartbeat(t *testing.T) {
+	rt := NewRouteTable()
+	rt.Register(&GatewayMeta{ID: "gw_1", URL: "http://gw1:8080", Devices: []string{"shelf_01"}})
+
+	rt.mu.Lock()
+	rt.gateways["gw_1"].LastHeartbeat = time.Now().Add(-2 * time.Minute).Unix()
+	rt.mu.Unlock()
+
+	// 重复发现不应刷新心跳
+	rt.Register(&GatewayMeta{ID: "gw_1", URL: "http://gw1:8080"})
+
+	rt.mu.RLock()
+	last := rt.gateways["gw_1"].LastHeartbeat
+	rt.mu.RUnlock()
+	if time.Since(time.Unix(last, 0)) < time.Minute {
+		t.Error("re-register should not refresh an existing gateway heartbeat")
+	}
+}
+
 func TestRouteTable_StaleGateways(t *testing.T) {
 	rt := NewRouteTable()
 	rt.Register(&GatewayMeta{ID: "gw_alive", URL: "http://a:1"})

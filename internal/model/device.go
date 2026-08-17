@@ -57,9 +57,9 @@ func (rt *RouteTable) Register(gw *GatewayMeta) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	if existing, ok := rt.gateways[gw.ID]; ok {
+		// 重复发现（mDNS 周期性广播）不刷新心跳/状态，
+		// 心跳只由健康检查 UpdateHeartbeat 驱动，避免掩盖网关离线。
 		existing.URL = gw.URL
-		existing.LastHeartbeat = time.Now().Unix()
-		existing.Status = GatewayOnline
 		for _, d := range gw.Devices {
 			if !contains(existing.Devices, d) {
 				existing.Devices = append(existing.Devices, d)

@@ -89,7 +89,7 @@ func (ds *DaemonServer) Start(ctx context.Context) error {
 		server.WithBaseURL(fmt.Sprintf("http://localhost:%d", ds.port)),
 	)
 
-	go ds.startHeartbeatMonitor(ds.cfg.Daemon.HeartbeatInterval, ds.cfg.Daemon.HeartbeatTimeout)
+	go ds.startHeartbeatMonitor(ctx, ds.cfg.Daemon.HeartbeatInterval, ds.cfg.Daemon.HeartbeatTimeout)
 	go ds.startSerialReconnect(ctx)
 	go ds.startStateSnapshot(ctx)
 
@@ -213,7 +213,7 @@ func (ds *DaemonServer) invokeCore(ctx context.Context, deviceID string, cap mod
 	}
 
 	if ds.hal == nil || !ds.hal.IsConnected() {
-		return &invokeResult{Status: "hal_not_available"}, nil
+		return &invokeResult{Status: StatusHalNotAvailable}, nil
 	}
 
 	if ds.hal.Transport() == TransportDCP {
@@ -232,7 +232,7 @@ func (ds *DaemonServer) invokeCore(ctx context.Context, deviceID string, cap mod
 					errMsg = msg
 				}
 			}
-			return &invokeResult{Status: "dcp_error", Protocol: "dcp", Result: map[string]any{"error": errMsg, "intent_id": intentID}, IntentID: intentID}, nil
+			return &invokeResult{Status: StatusDCPError, Protocol: "dcp", Result: map[string]any{"error": errMsg, "intent_id": intentID}, IntentID: intentID}, nil
 		}
 		status := "ok"
 		if reply.Payload != nil {
@@ -245,7 +245,7 @@ func (ds *DaemonServer) invokeCore(ctx context.Context, deviceID string, cap mod
 
 	cmdEntry, ok := impl.CmdMap[cap.Name]
 	if !ok {
-		return &invokeResult{Status: "cmd_map_not_found"}, nil
+		return &invokeResult{Status: StatusCmdMapNotFound}, nil
 	}
 
 	payload := formatURPCPayload(cmdEntry.Fmt, params)
@@ -266,6 +266,9 @@ func (ds *DaemonServer) invokeCore(ctx context.Context, deviceID string, cap mod
 	}, nil
 }
 
+// makeInvokeHandler 提供 Daemon 作为独立 MCP 入口时的设备工具调用。
+// 语义与 Sidecar 不同：本地直连、同步等待串口 ACK（<=5s），无 job_id 轮询。
+// 标准接入路径仍是 Sidecar（异步 job + 轮询），本入口用于单机直连调试。
 func (ds *DaemonServer) makeInvokeHandler(deviceID string, cap model.Capability) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := req.GetArguments()
@@ -276,10 +279,10 @@ func (ds *DaemonServer) makeInvokeHandler(deviceID string, cap model.Capability)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		if result.Status == "hal_not_available" {
+		if result.Status == StatusHalNotAvailable {
 			return mcp.NewToolResultError("HAL not available"), nil
 		}
-		if result.Status == "cmd_map_not_found" {
+		if result.Status == StatusCmdMapNotFound {
 			return mcp.NewToolResultError(fmt.Sprintf("cmd_map entry not found for %s", cap.Name)), nil
 		}
 		resultJSON, _ := mcp.NewToolResultJSON(result)
@@ -385,12 +388,18 @@ func (ds *DaemonServer) startSerialReconnect(ctx context.Context) {
 	}
 }
 
-func (ds *DaemonServer) startHeartbeatMonitor(interval, timeout time.Duration) {
+func (ds *DaemonServer) startHeartbeatMonitor(ctx context.Context, interval, timeout time.Duration) {
 	ticker := time.NewTicker(interval)
-	for range ticker.C {
-		removed := ds.registry.RemoveStale(timeout)
-		for _, id := range removed {
-			slog.Info("设备心跳超时，已移除", "device_id", id)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			removed := ds.registry.RemoveStale(timeout)
+			for _, id := range removed {
+				slog.Info("设备心跳超时，已移除", "device_id", id)
+			}
 		}
 	}
 }
@@ -419,7 +428,7 @@ func (ds *DaemonServer) handleHTTPInvoke(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusTooManyRequests)
 		json.NewEncoder(w).Encode(&protocol.SSEMessage{
 			Type:      "invoke_result",
-			Status:    "rate_limited",
+			Status:    StatusRateLimited,
 			Message:   "too many requests",
 			Timestamp: time.Now().Unix(),
 		})
@@ -448,7 +457,7 @@ func (ds *DaemonServer) handleHTTPInvoke(w http.ResponseWriter, r *http.Request)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(&protocol.SSEMessage{
 				Type:      "invoke_result",
-				Status:    "unauthorized",
+				Status:    StatusUnauthorized,
 				Message:   "missing token",
 				Timestamp: time.Now().Unix(),
 			})
@@ -459,7 +468,7 @@ func (ds *DaemonServer) handleHTTPInvoke(w http.ResponseWriter, r *http.Request)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(&protocol.SSEMessage{
 				Type:      "invoke_result",
-				Status:    "unauthorized",
+				Status:    StatusUnauthorized,
 				Message:   err.Error(),
 				Timestamp: time.Now().Unix(),
 			})
@@ -469,7 +478,7 @@ func (ds *DaemonServer) handleHTTPInvoke(w http.ResponseWriter, r *http.Request)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(&protocol.SSEMessage{
 				Type:      "invoke_result",
-				Status:    "forbidden",
+				Status:    StatusForbidden,
 				Message:   fmt.Sprintf("capability %s.%s not allowed", msg.DeviceID, msg.Capability),
 				Timestamp: time.Now().Unix(),
 			})
@@ -484,7 +493,7 @@ func (ds *DaemonServer) handleHTTPInvoke(w http.ResponseWriter, r *http.Request)
 			Type:      "invoke_result",
 			RequestID: msg.RequestID,
 			DeviceID:  msg.DeviceID,
-			Status:    "device_not_found",
+			Status:    StatusDeviceNotFound,
 			Timestamp: time.Now().Unix(),
 		})
 		return
@@ -504,7 +513,7 @@ func (ds *DaemonServer) handleHTTPInvoke(w http.ResponseWriter, r *http.Request)
 			RequestID:  msg.RequestID,
 			DeviceID:   msg.DeviceID,
 			Capability: msg.Capability,
-			Status:     "capability_not_found",
+			Status:     StatusCapabilityNotFound,
 			Timestamp:  time.Now().Unix(),
 		})
 		return

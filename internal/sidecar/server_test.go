@@ -1,14 +1,15 @@
-package sidecar
+﻿package sidecar
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ng/devagent/internal/model"
 )
 
 func TestNewSidecarServer(t *testing.T) {
 	rt := model.NewRouteTable()
-	srv := NewSidecarServer(rt, NewDedupWindow(), NewProgressTracker(), NewRouter(rt, "", nil), "")
+	srv := NewSidecarServer(rt, NewDedupWindow(), NewProgressTracker(), NewRouter(rt, "", 5*time.Minute, nil), "")
 	if srv == nil {
 		t.Fatal("expected non-nil server")
 	}
@@ -21,7 +22,7 @@ func TestSystemListDevices(t *testing.T) {
 		URL:     "http://192.168.1.50:8080",
 		Devices: []string{"shelf_01"},
 	})
-	srv := NewSidecarServer(rt, NewDedupWindow(), NewProgressTracker(), NewRouter(rt, "", nil), "")
+	srv := NewSidecarServer(rt, NewDedupWindow(), NewProgressTracker(), NewRouter(rt, "", 5*time.Minute, nil), "")
 	devices := srv.ListDevices()
 	if len(devices) != 1 {
 		t.Fatalf("expected 1 device, got %d", len(devices))

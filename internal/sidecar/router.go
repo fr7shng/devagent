@@ -23,6 +23,7 @@ type Router struct {
 	onRemove     func(deviceID string)
 	httpClient   *http.Client
 	tokenSecret  string
+	tokenTTL     time.Duration
 	tokenManager *TokenManager
 	cfg          *config.SidecarConfig
 }
@@ -33,7 +34,7 @@ type GWConn struct {
 	LastSeen  time.Time
 }
 
-func NewRouter(rt *model.RouteTable, tokenSecret string, cfg *config.SidecarConfig) *Router {
+func NewRouter(rt *model.RouteTable, tokenSecret string, tokenTTL time.Duration, cfg *config.SidecarConfig) *Router {
 	if cfg == nil {
 		defaultCfg := config.DefaultGlobalConfig()
 		cfg = &defaultCfg.Sidecar
@@ -47,6 +48,7 @@ func NewRouter(rt *model.RouteTable, tokenSecret string, cfg *config.SidecarConf
 		conns:        make(map[string]*GWConn),
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 		tokenSecret:  tokenSecret,
+		tokenTTL:     tokenTTL,
 		tokenManager: tm,
 		cfg:          cfg,
 	}
@@ -201,7 +203,11 @@ func (r *Router) ForwardInvoke(ctx context.Context, deviceID, capability string,
 	req.Header.Set("Content-Type", "application/json")
 
 	if r.tokenManager != nil {
-		token, err := r.tokenManager.Mint([]string{"*"}, 5*time.Minute)
+		ttl := r.tokenTTL
+		if ttl <= 0 {
+			ttl = 5 * time.Minute
+		}
+		token, err := r.tokenManager.Mint([]string{"*"}, ttl)
 		if err == nil {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}

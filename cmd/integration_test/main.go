@@ -30,7 +30,7 @@ func main() {
 	rt := model.NewRouteTable()
 	dedup := sidecar.NewDedupWindow()
 	progress := sidecar.NewProgressTracker()
-	router := sidecar.NewRouter(rt, "", nil)
+	router := sidecar.NewRouter(rt, "", 5*time.Minute, nil)
 	srv := sidecar.NewSidecarServer(rt, dedup, progress, router, "")
 
 	mcpSrv := srv.MCPServer()
@@ -476,7 +476,7 @@ func main() {
 	rt2 := model.NewRouteTable()
 	dedup2 := sidecar.NewDedupWindow()
 	progress2 := sidecar.NewProgressTracker()
-	router2 := sidecar.NewRouter(rt2, "", nil)
+	router2 := sidecar.NewRouter(rt2, "", 5*time.Minute, nil)
 	srv2 := sidecar.NewSidecarServer(rt2, dedup2, progress2, router2, "")
 
 	registered := make(chan string, 1)

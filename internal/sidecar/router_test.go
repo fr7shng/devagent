@@ -1,4 +1,4 @@
-package sidecar
+﻿package sidecar
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/ng/devagent/internal/model"
 	"github.com/ng/devagent/internal/protocol"
@@ -29,7 +30,7 @@ func TestForwardInvoke(t *testing.T) {
 
 	rt := model.NewRouteTable()
 	rt.Register(&model.GatewayMeta{ID: "shelf_01", URL: mock.URL, Devices: []string{"shelf_01"}})
-	router := NewRouter(rt, "", nil)
+	router := NewRouter(rt, "", 5*time.Minute, nil)
 
 	result, err := router.ForwardInvoke(context.Background(), "shelf_01", "set_relay", map[string]any{"pin": 1, "state": true}, "req_1", "job_1")
 	if err != nil {
@@ -45,7 +46,7 @@ func TestForwardInvoke(t *testing.T) {
 
 func TestForwardInvokeRouteNotFound(t *testing.T) {
 	rt := model.NewRouteTable()
-	router := NewRouter(rt, "", nil)
+	router := NewRouter(rt, "", 5*time.Minute, nil)
 
 	_, err := router.ForwardInvoke(context.Background(), "ghost_01", "set_relay", nil, "req_1", "job_1")
 	if err == nil {

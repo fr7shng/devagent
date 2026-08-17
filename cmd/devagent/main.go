@@ -56,7 +56,7 @@ func main() {
 		dedup.StartCleanup(ctx)
 		progress := sidecar.NewProgressTracker()
 		progress.StartCleanup(ctx)
-		router := sidecar.NewRouter(rt, gcfg.Token.Secret, &gcfg.Sidecar)
+		router := sidecar.NewRouter(rt, gcfg.Token.Secret, gcfg.Token.DefaultTTL, &gcfg.Sidecar)
 		srv := sidecar.NewSidecarServer(rt, dedup, progress, router, gcfg.Token.Secret)
 
 		router.OnDiscover(func(cfg *model.DeviceConfig) {

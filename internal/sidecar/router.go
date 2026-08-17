@@ -81,7 +81,7 @@ func (r *Router) Discover(ctx context.Context) {
 				Status:        "online",
 			})
 			r.conns[gwID] = &GWConn{GatewayID: gwID, URL: gwURL, LastSeen: time.Now()}
-			r.fetchAndRegisterDevices(gwURL)
+			r.fetchAndRegisterDevices(gwID, gwURL)
 		}
 	}()
 
@@ -137,11 +137,11 @@ func (r *Router) startGatewayHealthCheck(ctx context.Context) {
 	}
 }
 
-func (r *Router) FetchAndRegisterDevices(gwURL string) {
-	r.fetchAndRegisterDevices(gwURL)
+func (r *Router) FetchAndRegisterDevices(gwID, gwURL string) {
+	r.fetchAndRegisterDevices(gwID, gwURL)
 }
 
-func (r *Router) fetchAndRegisterDevices(gwURL string) {
+func (r *Router) fetchAndRegisterDevices(gwID, gwURL string) {
 	if r.onDiscover == nil {
 		return
 	}
@@ -162,14 +162,7 @@ func (r *Router) fetchAndRegisterDevices(gwURL string) {
 	for i := range cfgs {
 		slog.Info("注册设备工具", "device_id", cfgs[i].Device.ID, "gateway_url", gwURL)
 		r.onDiscover(&cfgs[i])
-
-		r.routeTable.Register(&model.GatewayMeta{
-			ID:            cfgs[i].Device.ID,
-			URL:           gwURL,
-			Devices:       []string{cfgs[i].Device.ID},
-			LastHeartbeat: time.Now().Unix(),
-			Status:        "online",
-		})
+		r.routeTable.AddDevice(gwID, cfgs[i].Device.ID)
 	}
 }
 

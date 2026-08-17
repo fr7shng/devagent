@@ -27,16 +27,16 @@ const (
 )
 
 type RouteTable struct {
-	devices map[string]string
-	gwMeta  map[string]*GatewayMeta
-	mu      sync.RWMutex
+	gateways       map[string]*GatewayMeta
+	devices        map[string]string
+	mu             sync.RWMutex
 	onStatusChange func(gwID string, oldStatus, newStatus string)
 }
 
 func NewRouteTable() *RouteTable {
 	return &RouteTable{
-		devices: make(map[string]string),
-		gwMeta:  make(map[string]*GatewayMeta),
+		gateways: make(map[string]*GatewayMeta),
+		devices:  make(map[string]string),
 	}
 }
 
@@ -44,20 +44,61 @@ func (rt *RouteTable) OnStatusChange(fn func(gwID string, oldStatus, newStatus s
 	rt.onStatusChange = fn
 }
 
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
 func (rt *RouteTable) Register(gw *GatewayMeta) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	gw.Status = GatewayOnline
-	rt.gwMeta[gw.ID] = gw
+	if existing, ok := rt.gateways[gw.ID]; ok {
+		existing.URL = gw.URL
+		existing.LastHeartbeat = time.Now().Unix()
+		existing.Status = GatewayOnline
+		for _, d := range gw.Devices {
+			if !contains(existing.Devices, d) {
+				existing.Devices = append(existing.Devices, d)
+				rt.devices[d] = gw.ID
+			}
+		}
+		return
+	}
+	meta := &GatewayMeta{
+		ID:            gw.ID,
+		URL:           gw.URL,
+		Devices:       gw.Devices,
+		LastHeartbeat: time.Now().Unix(),
+		Status:        GatewayOnline,
+	}
+	rt.gateways[gw.ID] = meta
 	for _, d := range gw.Devices {
-		rt.devices[d] = gw.URL
+		rt.devices[d] = gw.ID
+	}
+}
+
+func (rt *RouteTable) AddDevice(gwID, deviceID string) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	gw, ok := rt.gateways[gwID]
+	if !ok {
+		gw = &GatewayMeta{ID: gwID, LastHeartbeat: time.Now().Unix(), Status: GatewayOnline}
+		rt.gateways[gwID] = gw
+	}
+	if !contains(gw.Devices, deviceID) {
+		gw.Devices = append(gw.Devices, deviceID)
+		rt.devices[deviceID] = gwID
 	}
 }
 
 func (rt *RouteTable) Unregister(gwID string) []string {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	gw, ok := rt.gwMeta[gwID]
+	gw, ok := rt.gateways[gwID]
 	if !ok {
 		return nil
 	}
@@ -66,22 +107,29 @@ func (rt *RouteTable) Unregister(gwID string) []string {
 		delete(rt.devices, d)
 		removed = append(removed, d)
 	}
-	delete(rt.gwMeta, gwID)
+	delete(rt.gateways, gwID)
 	return removed
 }
 
 func (rt *RouteTable) Lookup(deviceID string) (string, bool) {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	url, ok := rt.devices[deviceID]
-	return url, ok
+	gwID, ok := rt.devices[deviceID]
+	if !ok {
+		return "", false
+	}
+	gw, ok := rt.gateways[gwID]
+	if !ok {
+		return "", false
+	}
+	return gw.URL, true
 }
 
 func (rt *RouteTable) AllDevices() []map[string]any {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
 	var result []map[string]any
-	for _, gw := range rt.gwMeta {
+	for _, gw := range rt.gateways {
 		for _, d := range gw.Devices {
 			result = append(result, map[string]any{
 				"device_id":   d,
@@ -97,7 +145,7 @@ func (rt *RouteTable) AllDevices() []map[string]any {
 func (rt *RouteTable) UpdateHeartbeat(gwID string) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if gw, ok := rt.gwMeta[gwID]; ok {
+	if gw, ok := rt.gateways[gwID]; ok {
 		old := gw.Status
 		gw.LastHeartbeat = time.Now().Unix()
 		gw.Status = GatewayOnline
@@ -110,7 +158,7 @@ func (rt *RouteTable) UpdateHeartbeat(gwID string) {
 func (rt *RouteTable) SetGatewayStatus(gwID, newStatus string) bool {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	gw, ok := rt.gwMeta[gwID]
+	gw, ok := rt.gateways[gwID]
 	if !ok {
 		return false
 	}
@@ -129,7 +177,7 @@ func (rt *RouteTable) StaleGateways(maintenanceTimeout, offlineTimeout time.Dura
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
 	now := time.Now().Unix()
-	for id, gw := range rt.gwMeta {
+	for id, gw := range rt.gateways {
 		elapsed := now - gw.LastHeartbeat
 		if elapsed > int64(offlineTimeout.Seconds()) {
 			offline = append(offline, id)

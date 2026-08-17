@@ -509,7 +509,7 @@ func main() {
 	mockGW := httptest.NewServer(devicesMux)
 	defer mockGW.Close()
 
-	router2.FetchAndRegisterDevices(mockGW.URL)
+	router2.FetchAndRegisterDevices("gw_auto", mockGW.URL)
 
 	select {
 	case devID := <-registered:

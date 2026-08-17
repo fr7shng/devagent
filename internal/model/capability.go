@@ -28,6 +28,7 @@ type Implementation struct {
 	Channel         string            `json:"channel,omitempty" yaml:"channel,omitempty"`
 	Baudrate        int               `json:"baudrate,omitempty" yaml:"baudrate,omitempty"`
 	Protocol        string            `json:"protocol,omitempty" yaml:"protocol,omitempty"`
+	HMACSecret      string            `json:"hmac_secret,omitempty" yaml:"hmac_secret,omitempty"`
 	CmdMap          map[string]CmdMap `json:"cmd_map,omitempty" yaml:"cmd_map,omitempty"`
 	TimeoutMs       int               `json:"timeout_ms,omitempty" yaml:"timeout_ms,omitempty"`
 	Retry           int               `json:"retry,omitempty" yaml:"retry,omitempty"`

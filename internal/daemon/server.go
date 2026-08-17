@@ -152,7 +152,12 @@ func (ds *DaemonServer) loadConfig(path string) error {
 		if len(cfg.Capabilities) > 0 {
 			proto := cfg.Capabilities[0].Implementation.Protocol
 			if proto == "DCP" || proto == "dcp" {
-				ds.hal = NewDCPBridge()
+				dcpBridge := NewDCPBridge()
+				if sec := cfg.Capabilities[0].Implementation.HMACSecret; sec != "" {
+					dcpBridge.SetHMACSecret([]byte(sec))
+					slog.Info("DCP 串口 HMAC 已启用")
+				}
+				ds.hal = dcpBridge
 			} else {
 				ds.hal = NewSerialBridge()
 			}

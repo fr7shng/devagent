@@ -68,7 +68,7 @@ implementation:
 ```
 
 - `protocol: "uRPC"` → `SerialBridge`. The `cmd` is the frame command byte; `fmt` is a template where `{param}` placeholders are replaced with values (integers/booleans/strings).
-- `protocol: "DCP"` → `DCPBridge`. `intent_id` (or the auto-computed hash of `{device}.{capability}`) is used as the DCP intent id; `cmd_map` is ignored.
+- `protocol: "DCP"` → `DCPBridge`. `intent_id` (or the auto-computed hash of `{device}.{capability}`) is used as the DCP intent id; `cmd_map` is ignored. Set `hmac_secret` to enable HMAC-SHA256 signing of DCP frames (the firmware must share the same secret).
 
 ### 2. Native shell (direct device)
 

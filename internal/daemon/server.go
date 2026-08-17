@@ -184,6 +184,10 @@ func (ds *DaemonServer) registerDeviceTools(cfg model.DeviceConfig) {
 	}
 }
 
+func (ds *DaemonServer) RegisterDeviceTools(cfg model.DeviceConfig) {
+	ds.registerDeviceTools(cfg)
+}
+
 type invokeResult struct {
 	Status   string
 	Protocol string

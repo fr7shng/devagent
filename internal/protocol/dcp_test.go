@@ -77,3 +77,23 @@ func TestEncodeDCPReply(t *testing.T) {
 		t.Errorf("expected kind DCPReply, got 0x%02X", frame[1])
 	}
 }
+
+func TestEncodeDCPCallPayloadTooLarge(t *testing.T) {
+	big := make([]byte, DCPMaxPayload*2)
+	_, err := EncodeDCPCall(1, IntentID("x"), map[string]any{"data": string(big)})
+	if err == nil {
+		t.Error("expected error for oversized payload")
+	}
+}
+
+func TestDecodeDCPFrameBadVersion(t *testing.T) {
+	frame, err := EncodeDCPCall(1, IntentID("set_brightness"), map[string]any{"level": float64(50)})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+	frame[0] = 99
+	_, err = DecodeDCPFrame(frame)
+	if err == nil {
+		t.Error("expected error for unsupported version")
+	}
+}

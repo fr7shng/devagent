@@ -157,6 +157,29 @@ func main() {
 	fmt.Println("=== Daemon 集成测试 ===")
 
 	daemonSrv := daemon.NewDaemonServer("gw_test", 0, "", nil)
+	daemonCfg := model.DeviceConfig{
+		Device: model.Device{ID: "shelf_01", Name: "货架控制器", Type: "mcu_proxy"},
+		Capabilities: []model.Capability{
+			{
+				Name:        "set_relay",
+				Description: "控制继电器",
+				InputSchema: model.InputSchema{
+					Type: "object",
+					Properties: map[string]model.PropertySchema{
+						"pin":   {Type: "integer", Enum: []int{1, 2, 3}},
+						"state": {Type: "boolean"},
+					},
+					Required: []string{"pin", "state"},
+				},
+				Implementation: model.Implementation{
+					Proxy: "uart", Protocol: "uRPC",
+					CmdMap: map[string]model.CmdMap{"set_relay": {Cmd: 161, Fmt: "{pin} {state}"}},
+				},
+			},
+		},
+	}
+	daemonSrv.Registry().Register(daemonCfg)
+	daemonSrv.RegisterDeviceTools(daemonCfg)
 	mcpDaemon := daemonSrv.MCPServer()
 
 	dc, err := client.NewInProcessClient(mcpDaemon)
@@ -185,7 +208,11 @@ func main() {
 		fmt.Printf("[FAIL] Daemon ListTools 失败: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("[PASS] Daemon ListTools: %d 个工具已注册\n", len(daemonTools.Tools))
+	if len(daemonTools.Tools) != 1 || daemonTools.Tools[0].Name != "shelf_01.set_relay" {
+		fmt.Printf("[FAIL] Daemon 工具注册: 期望 shelf_01.set_relay, 实际 %d 个工具\n", len(daemonTools.Tools))
+		os.Exit(1)
+	}
+	fmt.Printf("[PASS] Daemon 工具注册: %d 个工具\n", len(daemonTools.Tools))
 	for _, tool := range daemonTools.Tools {
 		fmt.Printf("       - %s: %s\n", tool.Name, tool.Description)
 	}

@@ -51,3 +51,34 @@ func TestCRC8(t *testing.T) {
 		t.Error("CRC should not be zero for non-trivial data")
 	}
 }
+
+func TestEncodeRequestPayloadTooLarge(t *testing.T) {
+	req := &URPCRequest{Seq: 1, Cmd: 0xA1, Payload: make([]byte, MaxPayloadSize+1)}
+	_, err := EncodeRequest(req)
+	if err == nil {
+		t.Error("expected error for oversized payload")
+	}
+}
+
+func TestDecodeAckTooShort(t *testing.T) {
+	_, err := DecodeAck([]byte{HeaderAck, 0x01})
+	if err == nil {
+		t.Error("expected error for too-short frame")
+	}
+}
+
+func TestDecodeAckBadHeader(t *testing.T) {
+	_, err := DecodeAck([]byte{HeaderRequest, 0x01, 0x00, 0x00, 0x00})
+	if err == nil {
+		t.Error("expected error for invalid ack header")
+	}
+}
+
+func TestDecodeAckCRCError(t *testing.T) {
+	frame := (&URPCAck{Seq: 1, Status: StatusOK, QueueDepth: 0}).Encode()
+	frame[len(frame)-1] ^= 0xFF
+	_, err := DecodeAck(frame)
+	if err == nil {
+		t.Error("expected CRC mismatch error")
+	}
+}

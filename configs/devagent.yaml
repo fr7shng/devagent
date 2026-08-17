@@ -2,6 +2,10 @@ sidecar:
   mdns_interval: 10s
   dedup_ttl: 3s
   heartbeat_timeout: 60s
+  # 静态网关（可选）：sidecar 与 daemon 同机运行、或 mDNS 不可用时直接指定，
+  # 绕过 mDNS 自动发现。health_check_interval 默认 30s。
+  static_gateways:
+    # - { id: "gw_mock", url: "http://localhost:8082" }
 
 daemon:
   heartbeat_interval: 30s

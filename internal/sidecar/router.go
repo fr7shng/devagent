@@ -149,6 +149,14 @@ func (r *Router) FetchAndRegisterDevices(gwID, gwURL string) {
 	r.fetchAndRegisterDevices(gwID, gwURL)
 }
 
+// AddStaticGateway 注册一个不依赖 mDNS 发现的网关（同机运行或 mDNS 不可用场景）。
+// 与 mDNS 发现的网关一样纳入健康检查与心跳管理。
+func (r *Router) AddStaticGateway(gwID, gwURL string) {
+	r.routeTable.Register(&model.GatewayMeta{ID: gwID, URL: gwURL})
+	r.conns[gwID] = &GWConn{GatewayID: gwID, URL: gwURL, LastSeen: time.Now()}
+	r.fetchAndRegisterDevices(gwID, gwURL)
+}
+
 func (r *Router) fetchAndRegisterDevices(gwID, gwURL string) {
 	if r.onDiscover == nil {
 		return

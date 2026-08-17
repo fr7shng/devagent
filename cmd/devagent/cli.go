@@ -16,6 +16,9 @@ sidecar:
   health_check_interval: 30s
   maintenance_timeout: 60s
   heartbeat_timeout: 90s
+  # 静态网关（可选）：sidecar 与 daemon 同机运行、或 mDNS 不可用时直接指定
+  # static_gateways:
+  #   - { id: "gw_mock", url: "http://localhost:8082" }
 
 daemon:
   heartbeat_interval: 30s

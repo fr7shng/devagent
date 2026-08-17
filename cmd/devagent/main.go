@@ -66,6 +66,15 @@ func main() {
 			srv.UnregisterDeviceTools(deviceID)
 		})
 
+		for _, gw := range gcfg.Sidecar.StaticGateways {
+			if gw.ID == "" || gw.URL == "" {
+				slog.Warn("静态网关配置缺少 id 或 url", "gateway", gw)
+				continue
+			}
+			router.AddStaticGateway(gw.ID, gw.URL)
+			slog.Info("注册静态网关", "gateway_id", gw.ID, "url", gw.URL)
+		}
+
 		go router.Discover(ctx)
 
 		slog.Info("devagent sidecar 启动中",

@@ -53,3 +53,25 @@ func TestForwardInvokeRouteNotFound(t *testing.T) {
 		t.Fatal("expected route not found error")
 	}
 }
+
+func TestAddStaticGateway(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]model.DeviceConfig{
+			{Device: model.Device{ID: "auto_pc", Name: "Static PC", Type: "direct"}},
+		})
+	}))
+	defer mock.Close()
+
+	rt := model.NewRouteTable()
+	router := NewRouter(rt, "", 5*time.Minute, nil)
+	router.OnDiscover(func(cfg *model.DeviceConfig) {})
+	router.AddStaticGateway("gw_static", mock.URL)
+
+	if _, ok := rt.Lookup("auto_pc"); !ok {
+		t.Error("expected device from static gateway to be routed")
+	}
+	if _, ok := router.conns["gw_static"]; !ok {
+		t.Error("expected static gateway registered for health checks")
+	}
+}

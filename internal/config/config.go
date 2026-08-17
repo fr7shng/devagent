@@ -22,11 +22,17 @@ type GlobalConfig struct {
 }
 
 type SidecarConfig struct {
-	MDNSInterval        time.Duration `json:"mdns_interval" yaml:"mdns_interval"`
-	DedupTTL            time.Duration `json:"dedup_ttl" yaml:"dedup_ttl"`
-	HealthCheckInterval time.Duration `json:"health_check_interval" yaml:"health_check_interval"`
-	MaintenanceTimeout  time.Duration `json:"maintenance_timeout" yaml:"maintenance_timeout"`
-	HeartbeatTimeout    time.Duration `json:"heartbeat_timeout" yaml:"heartbeat_timeout"`
+	MDNSInterval        time.Duration  `json:"mdns_interval" yaml:"mdns_interval"`
+	DedupTTL            time.Duration  `json:"dedup_ttl" yaml:"dedup_ttl"`
+	HealthCheckInterval time.Duration  `json:"health_check_interval" yaml:"health_check_interval"`
+	MaintenanceTimeout  time.Duration  `json:"maintenance_timeout" yaml:"maintenance_timeout"`
+	HeartbeatTimeout    time.Duration  `json:"heartbeat_timeout" yaml:"heartbeat_timeout"`
+	StaticGateways      []StaticGateway `json:"static_gateways,omitempty" yaml:"static_gateways,omitempty"`
+}
+
+type StaticGateway struct {
+	ID  string `json:"id" yaml:"id"`
+	URL string `json:"url" yaml:"url"`
 }
 
 type DaemonConfig struct {

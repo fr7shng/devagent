@@ -28,13 +28,19 @@ type NativeHandler interface {
 type ShellHandler struct{}
 
 func (sh *ShellHandler) Execute(ctx context.Context, deviceID string, cap model.Capability, params map[string]any) (*NativeResult, error) {
-	cmdStr, ok := params["command"].(string)
-	if !ok {
-		return &NativeResult{
-			Status:   "error",
-			Stderr:   "missing or invalid 'command' parameter",
-			ExitCode: -1,
-		}, nil
+	var cmdStr string
+	if entry, ok := cap.Implementation.CmdMap[cap.Name]; ok && entry.Fmt != "" {
+		cmdStr = string(formatURPCPayload(entry.Fmt, params))
+	} else {
+		var ok bool
+		cmdStr, ok = params["command"].(string)
+		if !ok {
+			return &NativeResult{
+				Status:   "error",
+				Stderr:   "missing or invalid 'command' parameter",
+				ExitCode: -1,
+			}, nil
+		}
 	}
 
 	if len(cap.Implementation.AllowedCommands) > 0 {

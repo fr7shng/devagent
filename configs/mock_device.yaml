@@ -1,0 +1,35 @@
+# 无硬件模拟设备：不需要任何 MCU/串口，演示完整调用链，Windows/Linux/macOS 通用
+# 启动：devagent -mode daemon -port 8082 -config configs/mock_device.yaml -gateway-id gw_mock
+# 高级自定义：把 allowed_commands 换成 ["mock_relay.sh"]、fmt 换成 "mock_relay.sh {pin} {state}"（需 scripts/ 在 PATH 中）
+device:
+  id: "mock_gw"
+  name: "模拟设备（无需硬件）"
+  type: "direct"
+
+capabilities:
+  - name: set_relay
+    description: "控制继电器通断（模拟，无真实硬件）"
+    inputSchema:
+      type: object
+      properties:
+        pin:   { type: integer, enum: [1, 2, 3], unit: "gpio_pin" }
+        state: { type: boolean, unit: "on_off" }
+      required: [pin, state]
+    implementation:
+      native: "shell"
+      allowed_commands: ["echo"]
+      cmd_map:
+        set_relay: { cmd: 0, fmt: "echo mock relay pin={pin} state={state}" }
+      timeout_ms: 5000
+
+  - name: read_status
+    description: "读取模拟设备状态"
+    inputSchema:
+      type: object
+      properties: {}
+    implementation:
+      native: "shell"
+      allowed_commands: ["echo"]
+      cmd_map:
+        read_status: { cmd: 0, fmt: "echo mock relay status ok" }
+      timeout_ms: 5000

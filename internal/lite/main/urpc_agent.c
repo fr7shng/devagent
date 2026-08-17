@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 
@@ -10,6 +11,8 @@
 #define URPC_MAX_PAYLOAD 64
 #define URPC_RX_BUF_SIZE 128
 #define URPC_TASK_STACK  2048
+
+#define RELAY_PIN_BITMASK ((1ULL << 1) | (1ULL << 2) | (1ULL << 3))
 
 static const char *TAG = "urpc_agent";
 static QueueHandle_t cmd_queue;
@@ -110,6 +113,15 @@ static void urpc_rx_task(void *arg) {
 }
 
 void urpc_agent_init(void) {
+    gpio_config_t io_conf = {
+        .pin_bit_mask = RELAY_PIN_BITMASK,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
     uart_config_t uart_config = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,

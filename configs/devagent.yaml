@@ -1,0 +1,14 @@
+sidecar:
+  mdns_interval: 10s
+  dedup_ttl: 3s
+  heartbeat_timeout: 60s
+
+daemon:
+  heartbeat_interval: 30s
+  heartbeat_timeout: 60s
+
+log_level: info
+
+token:
+  secret: ""
+  default_ttl: 3600s

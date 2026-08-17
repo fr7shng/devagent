@@ -1,0 +1,16 @@
+device:
+  id: "my_pc"
+  name: "我的电脑"
+  type: "direct"
+
+capabilities:
+  - name: shell_exec
+    description: "执行shell命令"
+    inputSchema:
+      type: object
+      properties:
+        command: { type: string, unit: "shell_command" }
+      required: [command]
+    implementation:
+      native: "shell"
+      timeout_ms: 30000

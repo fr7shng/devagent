@@ -1,0 +1,40 @@
+device:
+  id: "shelf_01"
+  name: "货架控制器01"
+  type: "mcu_proxy"
+
+capabilities:
+  - name: set_relay
+    description: "控制继电器通断"
+    intent_id: 4660
+    inputSchema:
+      type: object
+      properties:
+        pin: { type: integer, enum: [1, 2, 3], unit: "gpio_pin" }
+        state: { type: boolean, unit: "on_off" }
+      required: [pin, state]
+    implementation:
+      proxy: "uart"
+      channel: "/dev/ttyUSB0"
+      baudrate: 115200
+      protocol: "uRPC"
+      cmd_map:
+        set_relay: { cmd: 161, fmt: "{pin} {state}" }
+      timeout_ms: 5000
+      retry: 3
+
+  - name: read_temp
+    description: "读取温度传感器值"
+    intent_id: 4661
+    inputSchema:
+      type: object
+      properties: {}
+    implementation:
+      proxy: "uart"
+      channel: "/dev/ttyUSB0"
+      baudrate: 115200
+      protocol: "uRPC"
+      cmd_map:
+        read_temp: { cmd: 177, fmt: "" }
+      timeout_ms: 3000
+      retry: 2

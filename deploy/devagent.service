@@ -1,0 +1,23 @@
+[Unit]
+Description=devagent device control daemon
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/devagent -mode daemon -port 8080 -config /etc/devagent/device.yaml -global-config /etc/devagent/devagent.yaml -pid-file /var/run/devagent.pid
+Restart=on-failure
+RestartSec=5
+WatchdogSec=30
+
+LimitNPROC=512
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+Environment=DEVAGENT_TOKEN_SECRET=
+Environment=DEVAGENT_LOG_LEVEL=
+
+[Install]
+WantedBy=multi-user.target

@@ -36,6 +36,9 @@ func (db *DCPBridge) Open(channel string, baudrate int) error {
 	if err != nil {
 		return fmt.Errorf("open serial %s: %w", channel, err)
 	}
+	if err := p.SetReadTimeout(500 * time.Millisecond); err != nil {
+		return fmt.Errorf("set read timeout: %w", err)
+	}
 	db.port = p
 	db.channel = channel
 	db.baudrate = baudrate
@@ -158,6 +161,10 @@ func (db *DCPBridge) Reconnect() error {
 	if err != nil {
 		db.connected = false
 		return fmt.Errorf("reconnect serial %s: %w", db.channel, err)
+	}
+	if err := p.SetReadTimeout(500 * time.Millisecond); err != nil {
+		db.connected = false
+		return fmt.Errorf("set read timeout on reconnect: %w", err)
 	}
 	db.port = p
 	db.connected = true

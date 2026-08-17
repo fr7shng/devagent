@@ -1,0 +1,7 @@
+bin/
+.git/
+*.exe
+internal/lite/build/
+internal/lite/sdkconfig
+docs/
+scripts/

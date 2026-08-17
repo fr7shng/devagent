@@ -1,0 +1,23 @@
+# devagent daemon 容器化示例（无硬件 mock 设备）
+# 用法：docker compose up daemon
+# sidecar 不应容器化：它通过 stdio MCP 与 AI 客户端在同一进程通信，请在宿主运行。
+# 需要真实串口时：取消 devices 映射，并使用含 CGo 的镜像。
+services:
+  daemon:
+    build: .
+    command:
+      - "-mode"
+      - "daemon"
+      - "-port"
+      - "8080"
+      - "-config"
+      - "configs/mock_device.yaml"
+      - "-gateway-id"
+      - "gw_mock"
+      - "-global-config"
+      - "configs/devagent.yaml"
+    ports:
+      - "8080:8080"
+    # 真实串口设备（取消注释需有对应硬件）
+    # devices:
+    #   - "/dev/ttyUSB0:/dev/ttyUSB0"

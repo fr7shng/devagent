@@ -20,6 +20,10 @@ import (
 var pidFile string
 
 func main() {
+	if runCLI(os.Args[1:]) {
+		return
+	}
+
 	mode := flag.String("mode", "sidecar", "运行模式: sidecar | daemon")
 	port := flag.Int("port", 8080, "daemon 模式监听端口")
 	config_ := flag.String("config", "", "设备物模型 YAML 配置路径")

@@ -31,6 +31,9 @@ func (sb *SerialBridge) Open(channel string, baudrate int) error {
 	if err != nil {
 		return fmt.Errorf("open serial %s: %w", channel, err)
 	}
+	if err := p.SetReadTimeout(500 * time.Millisecond); err != nil {
+		return fmt.Errorf("set read timeout: %w", err)
+	}
 	sb.port = p
 	sb.channel = channel
 	sb.baudrate = baudrate
@@ -149,6 +152,10 @@ func (sb *SerialBridge) Reconnect() error {
 	if err != nil {
 		sb.connected = false
 		return fmt.Errorf("reconnect serial %s: %w", sb.channel, err)
+	}
+	if err := p.SetReadTimeout(500 * time.Millisecond); err != nil {
+		sb.connected = false
+		return fmt.Errorf("set read timeout on reconnect: %w", err)
 	}
 	sb.port = p
 	sb.connected = true

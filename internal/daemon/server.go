@@ -216,7 +216,7 @@ func (ds *DaemonServer) invokeCore(ctx context.Context, deviceID string, cap mod
 		if intentID == 0 {
 			intentID = protocol.IntentID(deviceID + "." + cap.Name)
 		}
-		reply, err := ds.hal.SendDCP(ctx, 1, intentID, params)
+		reply, err := ds.hal.SendDCP(ctx, byte(ds.seqCounter.Add(1)%256), intentID, params)
 		if err != nil {
 			return nil, fmt.Errorf("DCP send failed: %w", err)
 		}

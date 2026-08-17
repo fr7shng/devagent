@@ -211,3 +211,28 @@ func TestInvokeCore_DCPSendError(t *testing.T) {
 		t.Fatal("expected dcp send error")
 	}
 }
+
+func TestInvokeCore_DCPSeqIncrements(t *testing.T) {
+	var seqs []byte
+	hal := &MockHAL{
+		TType: TransportDCP,
+		SendDFn: func(ctx context.Context, seq byte, intentID uint16, params map[string]any) (*protocol.DCPFrame, error) {
+			seqs = append(seqs, seq)
+			return &protocol.DCPFrame{Ver: protocol.DCPVersion, Kind: protocol.DCPReply, Seq: seq, IntentID: intentID}, nil
+		},
+	}
+	ds := &DaemonServer{hal: hal, nativeHandlers: NewNativeHandlerRegistry()}
+	cap := invokeCap("set_relay", model.Implementation{Proxy: "uart", Protocol: "DCP"})
+
+	for i := 0; i < 3; i++ {
+		if _, err := ds.invokeCore(context.Background(), "shelf_01", cap, map[string]any{}); err != nil {
+			t.Fatalf("invokeCore failed: %v", err)
+		}
+	}
+	if len(seqs) != 3 {
+		t.Fatalf("expected 3 calls, got %d", len(seqs))
+	}
+	if seqs[0] != 1 || seqs[1] != 2 || seqs[2] != 3 {
+		t.Errorf("expected seq 1,2,3, got %d,%d,%d", seqs[0], seqs[1], seqs[2])
+	}
+}

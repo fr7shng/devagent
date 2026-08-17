@@ -15,7 +15,7 @@ devagent 是 DCP 的 Go Bridge 实现：
 | 多设备 | 单设备单 Bridge | 一个 Sidecar 管理多 Daemon |
 | 动态 Tool | 静态 manifest | 设备上线/下线自动注册/注销 |
 | MCU 协议 | CBOR only | CBOR (DCP) + uRPC 双协议 |
-| 安全 | HMAC token + dry-run | HMAC token + dry-run + 去重 |
+| 安全 | HMAC token | HMAC token + 去重 |
 
 ## 架构
 
@@ -153,9 +153,24 @@ CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat \
 ### 测试
 
 ```bash
-make test          # 单元测试 (35 tests)
-go run ./cmd/integration_test/   # 集成测试 (21 checks)
+make test          # 单元测试 (80 tests)
+go run ./cmd/integration_test/   # 集成测试 (32 checks)
 ```
+
+### 无硬件快速体验（推荐）
+
+不依赖任何硬件即可跑通完整调用链——mock 设备用本地命令模拟继电器：
+
+```bash
+# 一键演示：构建 + 起 mock daemon + 起 sidecar
+.\scripts\demo.ps1        # Windows
+./scripts/demo.sh         # Linux/macOS
+
+# 或手动：起 mock daemon
+devagent -mode daemon -port 8082 -config configs/mock_device.yaml -gateway-id gw_mock
+```
+
+> **同机运行注意**：sidecar 与 daemon 在同一台机器时，mDNS 多播不会回环，自动发现会失败。请在 `configs/devagent.yaml` 配置 `static_gateways` 指向 daemon（见"全局配置"）。
 
 ### Claude Desktop 配置
 
@@ -201,8 +216,8 @@ devagent.exe -mode daemon -port 8081 -config configs/pc_device.yaml -gateway-id 
 # OpenWrt (路由器网关)
 ./devagent -mode daemon -port 8081 -config /etc/devagent/device.yaml -gateway-id gw_router
 
-# DCP 设备（改 protocol 为 "DCP"）
-./devagent -mode daemon -port 8081 -config configs/dcp_device.yaml -gateway-id gw_dcp
+# DCP 设备（protocol: "DCP"，示例见 docs/dcp-firmware.md）
+./devagent -mode daemon -port 8081 -config dcp_device.yaml -gateway-id gw_dcp
 ```
 
 Daemon 加载 YAML 物模型，根据 `implementation.protocol` 自动选择 DCP Bridge（CBOR）或 SerialBridge（uRPC）。
@@ -359,7 +374,7 @@ capabilities:
 | `boolean` | `unit` |
 | `number` | `min`/`max`, `unit` |
 
-`unit` 追加到工具描述中（如 `pin(gpio_pin), state(on_off)`）。`intent_id` 为 DCP 兼容字段，不填则通过 `CRC16(name)` 自动计算。
+`unit` 追加到工具描述中（如 `pin(gpio_pin), state(on_off)`）。`intent_id` 为 DCP 兼容字段，不填则通过 `SHA256(name)` 取前 2 字节自动计算。
 
 ## 双协议支持
 
@@ -395,11 +410,18 @@ tm.CheckCap(claims, "motor.start")         // false
 sidecar:
   mdns_interval: 10s
   dedup_ttl: 3s
-  heartbeat_timeout: 60s
+  health_check_interval: 30s
+  maintenance_timeout: 60s
+  heartbeat_timeout: 90s
+  # 静态网关（可选）：sidecar 与 daemon 同机运行、或 mDNS 不可用时直接指定，
+  # 绕过 mDNS 自动发现（同机运行时 mDNS 多播不会回环）
+  # static_gateways:
+  #   - { id: "gw_mock", url: "http://localhost:8082" }
 
 daemon:
   heartbeat_interval: 30s
   heartbeat_timeout: 60s
+  state_path: ""
 
 log_level: info
 
@@ -429,7 +451,7 @@ ACK:  [0xBB] [Seq] [Status] [QueueDepth] [CRC8]
 
 Kind：0x01 Call / 0x02 Reply / 0x03 Event / 0x04 Error / 0x81 DryRun
 
-IntentID = CRC16/CCITT(intent name)，与 DCP 固件保持同步。
+IntentID = SHA256(intent name) 前 2 字节，与 DCP 固件保持同步。
 
 ## 重试与超时
 
@@ -455,25 +477,52 @@ type HAL interface {
 
 源码 `internal/lite/urpc_agent.c`，ESP-IDF v5.x 编译。pin 范围校验（1-3），state 校验（0-1），越界返回 INVALID_CMD。
 
+## CLI 子命令
+
+```bash
+devagent init                          # 生成 devagent.yaml + device.yaml 模板
+devagent validate <device.yaml>        # 校验物模型
+devagent schema <device.yaml>          # 打印能力摘要（含 intent_id）
+```
+
+## Docker
+
+daemon 可容器化运行（mock/native 能力；串口需 CGo 镜像）：
+
+```bash
+docker compose up daemon
+```
+
+## 完整运行指南
+
+见 [docs/RUNNING.md](docs/RUNNING.md)（含真实 ESP32 烧录、FAQ、验证清单）。
+
 ## 项目结构
 
 ```
 devagent/
 ├── cmd/
-│   ├── devagent/main.go              # CLI (slog + 优雅退出)
+│   ├── devagent/main.go              # CLI (slog + 优雅退出, init/validate/schema)
 │   └── integration_test/main.go      # 集成测试 (Sidecar+Daemon+DCP+Token)
 ├── internal/
-│   ├── model/                        # 数据模型 (unit/min/max/intent_id)
+│   ├── model/                        # 数据模型 + 并发路由表 (unit/min/max/intent_id)
 │   ├── mcptool/                      # 设备能力 → MCP Tool 编译 (sidecar/daemon 共用)
-│   ├── sidecar/                      # Server, Router, 去重, 进度, Token, 配置
-│   ├── daemon/                       # Server, Registry, DCPBridge, SerialBridge, MockHAL, 配置
-│   ├── protocol/                     # uRPC, DCP(CBOR), SSE(invoke_response)
-│   └── lite/                         # ESP32 uRPC Agent (C, pin校验)
+│   ├── sidecar/                      # Server, Router, 去重, 进度, Token
+│   ├── daemon/                       # Server, Registry, DCPBridge, SerialBridge, MockHAL
+│   ├── protocol/                     # uRPC, DCP(CBOR), SSE 消息
+│   ├── auth/                         # HMAC Capability Token
+│   ├── version/                      # 版本常量
+│   └── lite/                         # ESP32 uRPC 固件 (ESP-IDF 工程)
 ├── configs/
 │   ├── example_device.yaml           # MCU uRPC 设备
+│   ├── mock_device.yaml              # 无硬件模拟设备
 │   ├── pc_device.yaml                # PC 直连设备
-│   └── devagent.yaml                 # 全局配置 (token)
+│   ├── demo-sidecar.yaml             # demo 脚本专用 sidecar 配置（静态网关）
+│   └── devagent.yaml                 # 全局配置 (token/static_gateways)
+├── scripts/                          # demo.ps1 / demo.sh / mock_relay.sh
+├── docs/                             # RUNNING / device-model / security / openwrt / dcp-firmware
+├── deploy/                           # systemd unit + logrotate
+├── Dockerfile / docker-compose.yml
 ├── Makefile
-├── go.mod
-└── go.sum
+└── go.mod / go.sum
 ```

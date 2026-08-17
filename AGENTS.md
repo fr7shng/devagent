@@ -30,9 +30,10 @@ AI Tool ──stdio──▶ Sidecar ──HTTP──▶ Daemon ──serial─�
 - `internal/config` — 全局配置加载 + 环境变量覆盖 + Validate()
 - `internal/daemon` — Daemon 服务端，HAL 抽象 + 双协议 bridge
 - `internal/sidecar` — Sidecar 服务端，mDNS 发现 + HTTP 转发
+- `internal/version` — 版本常量 `version.Version`，发版只改这一处（MCP server、mDNS TXT、启动日志共用）
 - `internal/lite` — ESP32 C 固件，非 Go
 
-**不要**在 `daemon` 和 `sidecar` 之间直接引入包，它们通过 HTTP 通信。共享逻辑放 `auth`、`model`、`protocol`、`config` 或 `mcptool`。
+**不要**在 `daemon` 和 `sidecar` 之间直接引入包，它们通过 HTTP 通信。共享逻辑放 `auth`、`model`、`protocol`、`config`、`mcptool` 或 `version`。
 
 ## 关键约定
 
@@ -40,13 +41,14 @@ AI Tool ──stdio──▶ Sidecar ──HTTP──▶ Daemon ──serial─�
 - **Token 别名模式**：`daemon/token.go` 和 `sidecar/token.go` 仅是 `auth` 包的 type alias，不改实现
 - **异步调用**：Sidecar 设备调用是异步的，立即返回 `job_id`，用 `__system__.get_job_status` 轮询
 - **YAML → MCP Tool**：`mcptool.CompileTool(deviceID, cap, maintenance)` 编译，`maintenance=true` 时描述加 `[维护中]` 前缀
-- **IntentID**：代码用 SHA256 取前2字节，不是 README 说的 CRC16/CCITT。YAML 中可手动指定 `intent_id` 覆盖
+- **IntentID**：代码用 SHA256 取前2字节。YAML 中可手动指定 `intent_id` 覆盖
 - **串口互斥**：`SerialBridge`/`DCPBridge` 的 `SendURPC`/`SendDCP` 已有 `sync.Mutex`，不要在外层再加锁
 - **DCP HMAC**：发送帧需手动调 `protocol.AppendDCPHMAC()`，`EncodeDCPCall` 不自动附加
+- **同机发现**：sidecar 与 daemon 同机时 mDNS 多播不回环，需在全局配置 `sidecar.static_gateways` 指定网关（`Router.AddStaticGateway`）
 
 ## 配置
 
-- 全局配置：`configs/devagent.yaml`，通过 `config.Load()` 加载
+- 全局配置：`configs/devagent.yaml`，通过 `config.Load()` 加载；sidecar 支持 `static_gateways` 静态路由
 - 设备配置：`-config` 参数指定 YAML 物模型
 - 环境变量覆盖：`DEVAGENT_TOKEN_SECRET`、`DEVAGENT_LOG_LEVEL`、`DEVAGENT_TLS_CERT`、`DEVAGENT_TLS_KEY`、`DEVAGENT_STATE_PATH`
 - 校验规则：token.secret ≥ 16字符、dedup_ttl > 0、heartbeat_timeout > heartbeat_interval、log_level ∈ {debug,info,warn,error}

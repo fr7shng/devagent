@@ -85,6 +85,8 @@ Or try the one-command demo: `./scripts/demo.sh` (Linux/macOS) or `.\scripts\dem
 
 The sidecar discovers the daemon, fetches `/devices`, and registers tools like `shelf_01.set_relay`.
 
+> **Same machine?** mDNS multicast does not loop back, so discovery won't work when sidecar and daemon share a host. Point the sidecar at the daemon with `static_gateways` instead (see [Configuration](#configuration)).
+
 ### 4. Connect your AI
 
 Point an MCP client at the sidecar (stdio):
@@ -164,6 +166,34 @@ tm.CheckCap(claims, "shelf_01.set_relay")  // true
 
 Capabilities are namespaced as `{device}.{capability}`; `*` grants all. TLS is supported on the daemon HTTP server via `DEVAGENT_TLS_CERT` / `DEVAGENT_TLS_KEY`.
 
+## Configuration
+
+Global config lives in `configs/devagent.yaml` (overridable via env vars like `DEVAGENT_TOKEN_SECRET`):
+
+```yaml
+sidecar:
+  mdns_interval: 10s
+  dedup_ttl: 3s
+  health_check_interval: 30s
+  maintenance_timeout: 60s
+  heartbeat_timeout: 90s
+  static_gateways:            # optional: bypass mDNS (same host / no-mDNS)
+    # - { id: "gw_mock", url: "http://localhost:8082" }
+
+daemon:
+  heartbeat_interval: 30s
+  heartbeat_timeout: 60s
+  state_path: ""
+
+log_level: info
+
+token:
+  secret: ""                  # empty disables token checks
+  default_ttl: 3600s
+```
+
+A step-by-step walkthrough (including flashing real hardware) is in [docs/RUNNING.md](docs/RUNNING.md).
+
 ## Platform matrix
 
 | Platform | Arch | Serial | mDNS | Binary |
@@ -178,15 +208,19 @@ Capabilities are namespaced as `{device}.{capability}`; `*` grants all. TLS is s
 ## Project layout
 
 ```
-cmd/devagent/            # CLI (sidecar / daemon modes)
+cmd/devagent/            # CLI (sidecar / daemon modes, init/validate/schema)
 cmd/integration_test/    # integration tests (go run, not go test)
 internal/model/          # data models + concurrent route table
 internal/mcptool/        # capability → MCP tool compiler (shared)
 internal/sidecar/        # MCP server, mDNS router, dedup, async jobs
 internal/daemon/         # device registry, HAL bridges, native handlers
 internal/protocol/       # uRPC, DCP/CBOR, SSE message codecs
-internal/lite/           # ESP32 uRPC firmware (ESP-IDF)
-configs/                 # global config + device models
+internal/auth/           # HMAC capability tokens
+internal/version/        # version constant
+internal/lite/           # ESP32 uRPC firmware (ESP-IDF project)
+configs/                 # global config + device models (incl. mock)
+scripts/                 # demo.ps1 / demo.sh / mock_relay.sh
+docs/                    # running, device model, security, OpenWrt, DCP guides
 deploy/                  # systemd unit + logrotate
 ```
 

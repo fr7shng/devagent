@@ -49,7 +49,7 @@ capabilities:
       retry: 3
 ```
 
-3. Run the daemon:
+3. Save the YAML above as `dcp_device.yaml`, then run the daemon:
 
 ```bash
 devagent -mode daemon -port 8081 -config dcp_device.yaml -gateway-id gw_dcp

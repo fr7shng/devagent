@@ -218,7 +218,13 @@ docker compose up daemon
 
 ## FAQ
 
-**Can it work without mDNS?** The sidecar is where mDNS lives; if you don't want discovery, run sidecar and daemon on the same machine or pre-register routes.
+**Can it work without mDNS?** Yes. Set `static_gateways` in `configs/devagent.yaml` to point at daemons directly — required when sidecar and daemon run on the **same machine** (mDNS multicast does not loop back) or where mDNS is blocked:
+
+```yaml
+sidecar:
+  static_gateways:
+    - { id: "gw_mock", url: "http://localhost:8082" }
+```
 
 **Which MCUs are supported?** Any MCU that implements the ~100-line uRPC agent (see `internal/lite`). The DCP path targets ESP32-class devices with the [DCP firmware](https://github.com/device-context-protocol/dcp).
 

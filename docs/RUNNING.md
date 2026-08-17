@@ -77,7 +77,19 @@ curl http://localhost:8082/healthz
 ```
 
 - 若 mDNS 正常：日志出现 `"msg":"发现网关","gateway_id":"gw_mock"` 和 `注册设备工具 mock_gw.set_relay`。
-- 若**看不到**发现日志：多半是 Windows 防火墙拦截 mDNS（UDP 5353）。这不影响 daemon 的 HTTP 链路，可跳过 sidecar 的自动发现，直接看下一步。
+- **sidecar 与 daemon 同机时 mDNS 多播不会回环，发现不到是正常的**。改用静态网关（推荐，见下）。
+
+### 同机运行的推荐方式：静态网关
+
+在 `configs/devagent.yaml` 配置 `static_gateways` 指向 daemon，sidecar 启动时直接注册，不依赖 mDNS：
+
+```yaml
+sidecar:
+  static_gateways:
+    - { id: "gw_mock", url: "http://localhost:8082" }
+```
+
+重启 sidecar 后，日志应出现 `注册静态网关 gw_mock` 和 `注册设备工具 mock_gw.set_relay`。
 
 ## 3. 接入 AI（可选）
 
@@ -137,7 +149,7 @@ devagent schema configs/mock_device.yaml     # 打印能力摘要（含 intent_i
 
 | 现象 | 原因 / 处理 |
 |------|-------------|
-| sidecar 不发现 daemon | Windows 防火墙拦 mDNS（UDP 5353），尝试关闭防火墙测试 |
+| sidecar 不发现 daemon | **同机运行时 mDNS 多播不回环，属正常**；配置 `static_gateways` 指向 daemon 即可 |
 | 串口打不开 / HAL 不可用 | 检查物模型 `channel`/`baudrate`；CGo 构建要求 |
 | 端口被占 | 换 `-port`，或 `netstat -ano \| findstr :8082` 查占用进程 |
 | 设备被"心跳超时移除" | 已修复：静态配置设备不会被心跳移除（v0.4.0 起） |

@@ -8,7 +8,7 @@ import (
 func TestSSEMessage_Marshal(t *testing.T) {
 	msg := SSEMessage{
 		Type:      "register",
-		GatewayID: "gw_1",
+		DeviceID:  "shelf_01",
 		Timestamp: 1718600000,
 	}
 	data, err := json.Marshal(msg)
@@ -22,8 +22,8 @@ func TestSSEMessage_Marshal(t *testing.T) {
 	if decoded.Type != "register" {
 		t.Errorf("expected type 'register', got '%s'", decoded.Type)
 	}
-	if decoded.GatewayID != "gw_1" {
-		t.Errorf("expected gateway_id 'gw_1', got '%s'", decoded.GatewayID)
+	if decoded.DeviceID != "shelf_01" {
+		t.Errorf("expected device_id 'shelf_01', got '%s'", decoded.DeviceID)
 	}
 }
 

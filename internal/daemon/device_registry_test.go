@@ -50,11 +50,26 @@ func TestDeviceRegistry_RemoveStale(t *testing.T) {
 	d, _ := reg.GetDevice("shelf_01")
 	d.LastSeen = time.Now().Add(-60 * time.Second)
 	removed := reg.RemoveStale(30 * time.Second)
-	if len(removed) != 1 || removed[0] != "shelf_01" {
-		t.Errorf("expected shelf_01 to be removed as stale")
+	if len(removed) != 0 {
+		t.Errorf("static device should not be removed by heartbeat, got %v", removed)
 	}
 	_, ok := reg.GetDevice("shelf_01")
-	if ok {
-		t.Error("stale device should be removed")
+	if !ok {
+		t.Error("static device should remain registered")
+	}
+}
+
+func TestDeviceRegistry_RemoveStaleDynamic(t *testing.T) {
+	reg := NewDeviceRegistry()
+	reg.mu.Lock()
+	reg.devices["dyn_01"] = &RegisteredDevice{
+		Config:   model.DeviceConfig{Device: model.Device{ID: "dyn_01"}},
+		LastSeen: time.Now().Add(-60 * time.Second),
+	}
+	reg.mu.Unlock()
+
+	removed := reg.RemoveStale(30 * time.Second)
+	if len(removed) != 1 || removed[0] != "dyn_01" {
+		t.Errorf("expected dyn_01 removed, got %v", removed)
 	}
 }

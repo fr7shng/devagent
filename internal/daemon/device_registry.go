@@ -12,6 +12,7 @@ import (
 type RegisteredDevice struct {
 	Config   model.DeviceConfig
 	LastSeen time.Time
+	static   bool
 }
 
 type DeviceRegistry struct {
@@ -36,6 +37,7 @@ func (reg *DeviceRegistry) Register(cfg model.DeviceConfig) {
 	reg.devices[cfg.Device.ID] = &RegisteredDevice{
 		Config:   cfg,
 		LastSeen: time.Now(),
+		static:   true,
 	}
 }
 
@@ -73,6 +75,9 @@ func (reg *DeviceRegistry) RemoveStale(timeout time.Duration) []string {
 	var removed []string
 	now := time.Now()
 	for id, d := range reg.devices {
+		if d.static {
+			continue
+		}
 		if now.Sub(d.LastSeen) > timeout {
 			delete(reg.devices, id)
 			removed = append(removed, id)

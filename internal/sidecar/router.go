@@ -124,7 +124,7 @@ func (r *Router) startGatewayHealthCheck(ctx context.Context) {
 				delete(r.conns, gwID)
 			}
 			for gwID, conn := range r.conns {
-				resp, err := r.httpClient.Get(conn.URL + "/devices")
+				resp, err := r.httpClient.Get(conn.URL + "/healthz")
 				if err != nil {
 					slog.Warn("网关健康检查失败", "gateway_id", gwID, "error", err)
 					continue

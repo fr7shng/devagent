@@ -45,10 +45,11 @@ func (pt *ProgressTracker) GetJob(jobID string) (*model.Job, bool) {
 	if !ok {
 		return nil, false
 	}
-	return job, true
+	copied := *job
+	return &copied, true
 }
 
-func (pt *ProgressTracker) UpdateProgress(jobID string, progress int, status, message string) {
+func (pt *ProgressTracker) UpdateProgress(jobID string, progress int, status string) {
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
 	if job, ok := pt.jobs[jobID]; ok {

@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -101,26 +102,17 @@ type dcpReadResult struct {
 
 func (db *DCPBridge) readDCPReply() (*dcpReadResult, error) {
 	headerBuf := make([]byte, protocol.DCPHeaderSize)
-	hn, err := db.port.Read(headerBuf)
-	if err != nil {
+	if _, err := io.ReadFull(db.port, headerBuf); err != nil {
 		return nil, fmt.Errorf("read DCP header: %w", err)
-	}
-	if hn < protocol.DCPHeaderSize {
-		return nil, fmt.Errorf("DCP header incomplete: %d < %d", hn, protocol.DCPHeaderSize)
 	}
 
 	payloadLen := int(headerBuf[5])
-	totalLen := protocol.DCPHeaderSize + payloadLen
-
 	payloadBuf := make([]byte, payloadLen+protocol.DCPHMACSize)
-	pn, err := db.port.Read(payloadBuf)
-	if err != nil {
+	if _, err := io.ReadFull(db.port, payloadBuf); err != nil {
 		return nil, fmt.Errorf("read DCP payload: %w", err)
 	}
 
-	rawFrame := make([]byte, 0, totalLen+protocol.DCPHMACSize)
-	rawFrame = append(rawFrame, headerBuf[:hn]...)
-	rawFrame = append(rawFrame, payloadBuf[:pn]...)
+	rawFrame := append(headerBuf, payloadBuf...)
 
 	reply, err := protocol.DecodeDCPFrame(rawFrame)
 	if err != nil {

@@ -19,6 +19,7 @@ import (
 	"github.com/ng/devagent/internal/mcptool"
 	"github.com/ng/devagent/internal/model"
 	"github.com/ng/devagent/internal/protocol"
+	"github.com/ng/devagent/internal/version"
 	"gopkg.in/yaml.v3"
 )
 
@@ -57,14 +58,13 @@ func NewDaemonServer(gatewayID string, port int, configPath string, cfg *config.
 
 	mcpSrv := server.NewMCPServer(
 		"devagent-daemon",
-		"0.4.0",
+		version.Version,
 		server.WithToolCapabilities(true),
 	)
 
 	ds.mcpServer = mcpSrv
 	return ds
 }
-
 func (ds *DaemonServer) MCPServer() *server.MCPServer {
 	return ds.mcpServer
 }
@@ -327,7 +327,7 @@ func replacePlaceholder(s, key string, val any) string {
 func (ds *DaemonServer) startMDNS() error {
 	txt := []string{
 		"gateway=" + ds.gatewayID,
-		"version=0.4.0",
+		"version=" + version.Version,
 		"protocols=urpc,dcp",
 	}
 	if ds.cfg.TLS.CertPath != "" {

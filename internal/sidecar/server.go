@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/ng/devagent/internal/mcptool"
 	"github.com/ng/devagent/internal/model"
+	"github.com/ng/devagent/internal/version"
 )
 
 type RouteTable = model.RouteTable
@@ -38,10 +39,9 @@ func NewSidecarServer(rt *RouteTable, dedup *DedupWindow, progress *ProgressTrac
 
 	mcpSrv := server.NewMCPServer(
 		"devagent-sidecar",
-		"0.4.0",
+		version.Version,
 		server.WithToolCapabilities(true),
 	)
-
 	mcpSrv.AddTool(mcp.NewTool("__system__.list_devices",
 		mcp.WithDescription("列出所有已注册设备及状态"),
 	), s.handleListDevices)

@@ -131,7 +131,7 @@ func main() {
 	fmt.Printf("[PASS] get_job_status (nonexistent): %v\n", jobResult.Content[0].(mcp.TextContent).Text)
 
 	progress.Register("job_test_1", "req_001", "shelf_01")
-	progress.UpdateProgress("job_test_1", 50, "running", "")
+	progress.UpdateProgress("job_test_1", 50, "running")
 	jobResult2, err := c.CallTool(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name:      "__system__.get_job_status",

@@ -15,6 +15,7 @@ import (
 	"github.com/ng/devagent/internal/daemon"
 	"github.com/ng/devagent/internal/model"
 	"github.com/ng/devagent/internal/sidecar"
+	"github.com/ng/devagent/internal/version"
 )
 
 var pidFile string
@@ -70,7 +71,7 @@ func main() {
 		slog.Info("devagent sidecar 启动中",
 			"protocol", "stdio",
 			"mcp_server", "devagent-sidecar",
-			"version", "0.4.0",
+			"version", version.Version,
 			"mdns_service", "_devagent._tcp",
 			"tools", "list_devices|diagnose_connectivity|get_device_schema|get_job_status",
 			"claude_config", `{"mcpServers":{"devagent":{"command":"devagent","args":["-mode","sidecar"]}}}`,
@@ -91,7 +92,7 @@ func main() {
 		slog.Info("devagent daemon 启动中",
 			"protocol", "SSE",
 			"mcp_server", "devagent-daemon",
-			"version", "0.4.0",
+			"version", version.Version,
 			"port", *port,
 			"config", *config_,
 			"gateway_id", *gatewayID,

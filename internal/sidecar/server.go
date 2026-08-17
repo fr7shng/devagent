@@ -38,7 +38,7 @@ func NewSidecarServer(rt *RouteTable, dedup *DedupWindow, progress *ProgressTrac
 
 	mcpSrv := server.NewMCPServer(
 		"devagent-sidecar",
-		"0.1.0",
+		"0.4.0",
 		server.WithToolCapabilities(true),
 	)
 

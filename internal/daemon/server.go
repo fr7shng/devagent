@@ -57,7 +57,7 @@ func NewDaemonServer(gatewayID string, port int, configPath string, cfg *config.
 
 	mcpSrv := server.NewMCPServer(
 		"devagent-daemon",
-		"0.1.0",
+		"0.4.0",
 		server.WithToolCapabilities(true),
 	)
 

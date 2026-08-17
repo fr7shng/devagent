@@ -69,6 +69,14 @@ make build              # or: go build -o bin/devagent ./cmd/devagent/
 
 `configs/example_device.yaml` describes a relay + temperature device proxied over a serial port. It broadcasts over mDNS as `_devagent._tcp`.
 
+**No hardware?** Use the mock device — the whole chain runs without a serial port:
+
+```bash
+./bin/devagent -mode daemon -port 8082 -config configs/mock_device.yaml -gateway-id gw_mock
+```
+
+Or try the one-command demo: `./scripts/demo.sh` (Linux/macOS) or `.\scripts\demo.ps1` (Windows).
+
 ### 3. Run the sidecar
 
 ```bash
@@ -190,6 +198,22 @@ make test         # unit tests
 make vet          # go vet
 make integration  # integration tests (go run ./cmd/integration_test/)
 make cross        # cross-compile matrix (Windows/Linux/macOS/OpenWrt)
+```
+
+### CLI subcommands
+
+```bash
+devagent init                          # generate devagent.yaml + device.yaml templates
+devagent validate <device.yaml>        # validate a device model
+devagent schema <device.yaml>          # print a capability summary (with intent ids)
+```
+
+### Docker
+
+The daemon can run in a container (mock/native capabilities; serial needs a CGo image):
+
+```bash
+docker compose up daemon
 ```
 
 ## FAQ

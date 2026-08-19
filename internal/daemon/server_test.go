@@ -74,3 +74,15 @@ capabilities:
 		t.Error("expected no DCP HMAC secret when hmac_secret unset")
 	}
 }
+
+// mcu_proxy 且无 capabilities 时不应越界 panic（修复 Capabilities[0] 崩溃）。
+func TestLoadConfigEmptyCapabilitiesNoPanic(t *testing.T) {
+	path := writeTempDevice(t, "device:\n  id: \"empty_gw\"\n  name: \"空配置\"\n  type: \"mcu_proxy\"\ncapabilities: []\n")
+	ds := NewDaemonServer("gw_test", 0, "", nil)
+	if err := ds.loadConfig(path); err != nil {
+		t.Fatalf("loadConfig failed: %v", err)
+	}
+	if ds.hal != nil {
+		t.Errorf("expected no HAL for empty capabilities, got %T", ds.hal)
+	}
+}

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 func TestDeviceRegistry_Register(t *testing.T) {
 	reg := NewDeviceRegistry()
 	cfg := model.DeviceConfig{
-		Device:       model.Device{ID: "shelf_01", Name: "货架01", Type: "mcu_proxy"},
+		Device: model.Device{ID: "shelf_01", Name: "货架01", Type: "mcu_proxy"},
 		Capabilities: []model.Capability{
 			{Name: "set_relay", Description: "控制继电器"},
 		},
@@ -71,5 +72,36 @@ func TestDeviceRegistry_RemoveStaleDynamic(t *testing.T) {
 	removed := reg.RemoveStale(30 * time.Second)
 	if len(removed) != 1 || removed[0] != "dyn_01" {
 		t.Errorf("expected dyn_01 removed, got %v", removed)
+	}
+}
+
+// 快照恢复的设备应视为静态，不被心跳超时误删（修复重启后 ~90s 设备消失的 bug）。
+func TestDeviceRegistry_RestoreIsStatic(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	reg := NewDeviceRegistry()
+	reg.SetStatePath(statePath)
+
+	cfg := model.DeviceConfig{Device: model.Device{ID: "shelf_01", Name: "货架01", Type: "mcu_proxy"}}
+	reg.Register(cfg) // 先注册（标记 static=true）
+	if err := reg.Snapshot(); err != nil {
+		t.Fatalf("snapshot failed: %v", err)
+	}
+
+	// 模拟重启：新建 registry 并 Restore，再将其净化后的状态覆盖为过期，
+	// 验证 RemoveStale 不会删除恢复的设备。
+	reg2 := NewDeviceRegistry()
+	reg2.SetStatePath(statePath)
+	if err := reg2.Restore(); err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+	d, ok := reg2.GetDevice("shelf_01")
+	if !ok {
+		t.Fatal("expected restored device")
+	}
+	d.LastSeen = time.Now().Add(-time.Hour)
+	removed := reg2.RemoveStale(30 * time.Second)
+	if len(removed) != 0 {
+		t.Errorf("restored device must not be removed as stale, got %v", removed)
 	}
 }

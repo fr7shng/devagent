@@ -2,7 +2,9 @@ package sidecar
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -115,6 +117,18 @@ func (s *SidecarServer) UnregisterDeviceTools(deviceID string) {
 	delete(s.configs, deviceID)
 }
 
+// RefreshDeviceTools 按当前路由状态重新编译设备的工具（网关进入/退出维护时调用），
+// 使 [维护中] 描述与 ONLINE 恢复即时生效。mcp-go AddTool 同名覆盖，可安全重复注册。
+func (s *SidecarServer) RefreshDeviceTools(deviceID string) {
+	s.configsMu.RLock()
+	cfg, ok := s.configs[deviceID]
+	s.configsMu.RUnlock()
+	if !ok {
+		return
+	}
+	s.RegisterDeviceTools(cfg)
+}
+
 func (s *SidecarServer) makeDeviceInvokeHandler(deviceID string, cap model.Capability) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		gwStatus := s.getGatewayStatus(deviceID)
@@ -169,15 +183,58 @@ func (s *SidecarServer) handleDiagnose(ctx context.Context, req mcp.CallToolRequ
 		})
 		return result, nil
 	}
+
+	var gwStatus string
+	var heartbeatAge int64 = -1
+	for _, d := range s.routeTable.AllDevices() {
+		if d["device_id"] == deviceID {
+			if st, ok2 := d["status"].(string); ok2 {
+				gwStatus = st
+			}
+			if hb, ok2 := d["last_heartbeat"].(int64); ok2 && hb > 0 {
+				heartbeatAge = time.Now().Unix() - hb
+			}
+			break
+		}
+	}
+
+	// 探测网关侧到物理设备的链路：/readyz 报告串口连接与设备数。
+	gwToDevice := "unknown"
+	if s.router != nil && s.router.httpClient != nil {
+		req0, err := http.NewRequestWithContext(ctx, http.MethodGet, gwURL+"/readyz", nil)
+		if err == nil {
+			s.router.setAuthHeader(req0)
+			resp, err := s.router.httpClient.Do(req0)
+			if err != nil {
+				gwToDevice = "unreachable"
+			} else {
+				defer resp.Body.Close()
+				var ready struct {
+					Status          string `json:"status"`
+					SerialConnected bool   `json:"serial_connected"`
+					DeviceCount     int    `json:"device_count"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&ready); err == nil {
+					if ready.SerialConnected && ready.DeviceCount > 0 {
+						gwToDevice = "ok"
+					} else {
+						gwToDevice = "not_ready"
+					}
+				}
+			}
+		}
+	}
+
 	result, _ := mcp.NewToolResultJSON(map[string]any{
 		"device_id":          deviceID,
 		"gateway_url":        gwURL,
+		"gateway_status":     gwStatus,
 		"sidecar_to_gateway": "ok",
-		"gateway_to_device":  "check_not_implemented",
+		"gateway_to_device":  gwToDevice,
+		"heartbeat_age_sec":  heartbeatAge,
 	})
 	return result, nil
 }
-
 func (s *SidecarServer) handleGetSchema(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	deviceID, err := req.RequireString("device_id")
 	if err != nil {
@@ -189,7 +246,8 @@ func (s *SidecarServer) handleGetSchema(ctx context.Context, req mcp.CallToolReq
 	if !ok {
 		return mcp.NewToolResultError(fmt.Sprintf("device %s schema not available", deviceID)), nil
 	}
-	result, _ := mcp.NewToolResultJSON(cfg)
+	// 暴露给 AI 的 schema 剥离 HMAC 密钥等敏感字段。
+	result, _ := mcp.NewToolResultJSON(cfg.Sanitized())
 	return result, nil
 }
 

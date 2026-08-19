@@ -15,11 +15,11 @@ type InputSchema struct {
 }
 
 type PropertySchema struct {
-	Type  string   `json:"type" yaml:"type"`
-	Enum  []int    `json:"enum,omitempty" yaml:"enum,omitempty"`
-	Unit  string   `json:"unit,omitempty" yaml:"unit,omitempty"`
-	Min   *float64 `json:"min,omitempty" yaml:"min,omitempty"`
-	Max   *float64 `json:"max,omitempty" yaml:"max,omitempty"`
+	Type string   `json:"type" yaml:"type"`
+	Enum []int    `json:"enum,omitempty" yaml:"enum,omitempty"`
+	Unit string   `json:"unit,omitempty" yaml:"unit,omitempty"`
+	Min  *float64 `json:"min,omitempty" yaml:"min,omitempty"`
+	Max  *float64 `json:"max,omitempty" yaml:"max,omitempty"`
 }
 
 type Implementation struct {
@@ -52,4 +52,22 @@ func IsRequired(name string, required []string) bool {
 type DeviceConfig struct {
 	Device       Device       `json:"device" yaml:"device"`
 	Capabilities []Capability `json:"capabilities" yaml:"capabilities"`
+}
+
+// Sanitized 返回去除敏感字段（HMAC 密钥）的配置副本，用于对外暴露（/devices、get_device_schema）。
+// 调用方不应把原始配置中的密钥泄漏给未授权的 AI 或局域网对端。
+func (c DeviceConfig) Sanitized() DeviceConfig {
+	out := c
+	out.Device = c.Device
+	out.Device.Capabilities = make([]Capability, len(c.Device.Capabilities))
+	copy(out.Device.Capabilities, c.Device.Capabilities)
+	out.Capabilities = make([]Capability, len(c.Capabilities))
+	copy(out.Capabilities, c.Capabilities)
+	for i := range out.Capabilities {
+		out.Capabilities[i].Implementation.HMACSecret = ""
+	}
+	for i := range out.Device.Capabilities {
+		out.Device.Capabilities[i].Implementation.HMACSecret = ""
+	}
+	return out
 }

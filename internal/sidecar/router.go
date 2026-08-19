@@ -16,9 +16,10 @@ import (
 	"github.com/ng/devagent/internal/protocol"
 )
 
+// Router 以 RouteTable 为唯一事实来源（gateway_id → URL/状态/设备）。
+// 之前还维护了一份并行的 conns 映射，既重复建模又与健康检查 goroutine 产生并发 map 读写竞争，已移除。
 type Router struct {
 	routeTable   *model.RouteTable
-	conns        map[string]*GWConn
 	onDiscover   func(cfg *model.DeviceConfig)
 	onRemove     func(deviceID string)
 	httpClient   *http.Client
@@ -26,12 +27,6 @@ type Router struct {
 	tokenTTL     time.Duration
 	tokenManager *TokenManager
 	cfg          *config.SidecarConfig
-}
-
-type GWConn struct {
-	GatewayID string
-	URL       string
-	LastSeen  time.Time
 }
 
 func NewRouter(rt *model.RouteTable, tokenSecret string, tokenTTL time.Duration, cfg *config.SidecarConfig) *Router {
@@ -45,7 +40,6 @@ func NewRouter(rt *model.RouteTable, tokenSecret string, tokenTTL time.Duration,
 	}
 	return &Router{
 		routeTable:   rt,
-		conns:        make(map[string]*GWConn),
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 		tokenSecret:  tokenSecret,
 		tokenTTL:     tokenTTL,
@@ -88,7 +82,6 @@ func (r *Router) Discover(ctx context.Context) {
 				LastHeartbeat: time.Now().Unix(),
 				Status:        "online",
 			})
-			r.conns[gwID] = &GWConn{GatewayID: gwID, URL: gwURL, LastSeen: time.Now()}
 			r.fetchAndRegisterDevices(gwID, gwURL)
 		}
 	}()
@@ -129,17 +122,15 @@ func (r *Router) startGatewayHealthCheck(ctx context.Context) {
 						r.onRemove(deviceID)
 					}
 				}
-				delete(r.conns, gwID)
 			}
-			for gwID, conn := range r.conns {
-				resp, err := r.httpClient.Get(conn.URL + "/healthz")
+			for _, gw := range r.routeTable.Gateways() {
+				resp, err := r.httpClient.Get(gw.URL + "/healthz")
 				if err != nil {
-					slog.Warn("网关健康检查失败", "gateway_id", gwID, "error", err)
+					slog.Warn("网关健康检查失败", "gateway_id", gw.ID, "error", err)
 					continue
 				}
 				resp.Body.Close()
-				r.routeTable.UpdateHeartbeat(gwID)
-				conn.LastSeen = time.Now()
+				r.routeTable.UpdateHeartbeat(gw.ID)
 			}
 		}
 	}
@@ -153,7 +144,6 @@ func (r *Router) FetchAndRegisterDevices(gwID, gwURL string) {
 // 与 mDNS 发现的网关一样纳入健康检查与心跳管理。
 func (r *Router) AddStaticGateway(gwID, gwURL string) {
 	r.routeTable.Register(&model.GatewayMeta{ID: gwID, URL: gwURL})
-	r.conns[gwID] = &GWConn{GatewayID: gwID, URL: gwURL, LastSeen: time.Now()}
 	r.fetchAndRegisterDevices(gwID, gwURL)
 }
 
@@ -162,7 +152,13 @@ func (r *Router) fetchAndRegisterDevices(gwID, gwURL string) {
 		return
 	}
 
-	resp, err := r.httpClient.Get(gwURL + "/devices")
+	req, err := http.NewRequest(http.MethodGet, gwURL+"/devices", nil)
+	if err != nil {
+		slog.Error("构造设备列表请求失败", "gateway_url", gwURL, "error", err)
+		return
+	}
+	r.setAuthHeader(req)
+	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		slog.Error("获取设备列表失败", "gateway_url", gwURL, "error", err)
 		return
@@ -180,6 +176,22 @@ func (r *Router) fetchAndRegisterDevices(gwID, gwURL string) {
 		r.onDiscover(&cfgs[i])
 		r.routeTable.AddDevice(gwID, cfgs[i].Device.ID)
 	}
+}
+
+// setAuthHeader 在请求上附加 Bearer token（若已配置鉴权）。
+func (r *Router) setAuthHeader(req *http.Request) {
+	if r.tokenManager == nil {
+		return
+	}
+	ttl := r.tokenTTL
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	token, err := r.tokenManager.Mint([]string{"*"}, ttl)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 }
 
 func (r *Router) ForwardInvoke(ctx context.Context, deviceID, capability string, params any, requestID, jobID string) (*protocol.SSEMessage, error) {
@@ -209,17 +221,7 @@ func (r *Router) ForwardInvoke(ctx context.Context, deviceID, capability string,
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-
-	if r.tokenManager != nil {
-		ttl := r.tokenTTL
-		if ttl <= 0 {
-			ttl = 5 * time.Minute
-		}
-		token, err := r.tokenManager.Mint([]string{"*"}, ttl)
-		if err == nil {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-	}
+	r.setAuthHeader(req)
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {

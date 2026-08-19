@@ -5,49 +5,35 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/ng/devagent/internal/protocol"
-	goserial "go.bug.st/serial"
 )
 
+const maxDCPRetries = 3
+
+// DCPBridge 通过串口承载 DCP 协议，负责帧收发、HMAC 签名/验签与超时重试。
 type DCPBridge struct {
-	port       goserial.Port
-	channel    string
-	baudrate   int
+	serialPort
 	hmacSecret []byte
-	mu         sync.Mutex
-	connected  bool
+	retry      int
 }
 
 func NewDCPBridge() *DCPBridge {
-	return &DCPBridge{}
+	return &DCPBridge{retry: maxDCPRetries}
+}
+
+// SetRetry 覆盖默认重试次数（<=0 时回落到默认值）。
+func (db *DCPBridge) SetRetry(n int) {
+	if n <= 0 {
+		n = maxDCPRetries
+	}
+	db.retry = n
 }
 
 func (db *DCPBridge) SetHMACSecret(secret []byte) {
 	db.hmacSecret = secret
 }
-
-func (db *DCPBridge) Open(channel string, baudrate int) error {
-	mode := &goserial.Mode{
-		BaudRate: baudrate,
-	}
-	p, err := goserial.Open(channel, mode)
-	if err != nil {
-		return fmt.Errorf("open serial %s: %w", channel, err)
-	}
-	if err := p.SetReadTimeout(500 * time.Millisecond); err != nil {
-		return fmt.Errorf("set read timeout: %w", err)
-	}
-	db.port = p
-	db.channel = channel
-	db.baudrate = baudrate
-	db.connected = true
-	return nil
-}
-
-const maxDCPRetries = 3
 
 func (db *DCPBridge) SendDCP(ctx context.Context, seq byte, intentID uint16, params map[string]any) (*protocol.DCPFrame, error) {
 	db.mu.Lock()
@@ -59,7 +45,7 @@ func (db *DCPBridge) SendDCP(ctx context.Context, seq byte, intentID uint16, par
 		defer cancel()
 	}
 
-	for attempt := 0; attempt < maxDCPRetries; attempt++ {
+	for attempt := 0; attempt < db.retry; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("context cancelled: %w", err)
 		}
@@ -83,23 +69,27 @@ func (db *DCPBridge) SendDCP(ctx context.Context, seq byte, intentID uint16, par
 			continue
 		}
 
-		if len(reply.Frame.HMAC) > 0 && db.hmacSecret != nil {
-			if !protocol.VerifyDCPHMAC(reply.RawFrame, db.hmacSecret) {
-				slog.Warn("DCP reply HMAC 校验失败", "intent_id", intentID)
+		// 已启用 HMAC 时，强制要求回复携带合法 HMAC，否则不信任该帧（重试）。
+		if db.hmacSecret != nil {
+			if len(reply.Frame.HMAC) == 0 || !protocol.VerifyDCPHMAC(reply.RawFrame, db.hmacSecret) {
+				slog.Warn("DCP reply HMAC 校验失败，重试", "intent_id", intentID, "attempt", attempt+1)
+				continue
 			}
 		}
 
 		return reply.Frame, nil
 	}
 
-	return nil, fmt.Errorf("DCP failed after %d retries", maxDCPRetries)
+	return nil, fmt.Errorf("%w: DCP failed after %d retries", ErrDeviceTimeout, db.retry)
 }
 
 type dcpReadResult struct {
-	Frame     *protocol.DCPFrame
-	RawFrame  []byte
+	Frame    *protocol.DCPFrame
+	RawFrame []byte
 }
 
+// readDCPReply 读取一帧 DCP 回复。仅当启用 HMAC 时才读取并带上 HMAC 尾，
+// 避免无 HMAC 的设备回复导致读入下一帧字节造成流错位。
 func (db *DCPBridge) readDCPReply() (*dcpReadResult, error) {
 	headerBuf := make([]byte, protocol.DCPHeaderSize)
 	if _, err := io.ReadFull(db.port, headerBuf); err != nil {
@@ -107,7 +97,12 @@ func (db *DCPBridge) readDCPReply() (*dcpReadResult, error) {
 	}
 
 	payloadLen := int(headerBuf[5])
-	payloadBuf := make([]byte, payloadLen+protocol.DCPHMACSize)
+	readLen := payloadLen
+	if db.hmacSecret != nil {
+		readLen += protocol.DCPHMACSize
+	}
+
+	payloadBuf := make([]byte, readLen)
 	if _, err := io.ReadFull(db.port, payloadBuf); err != nil {
 		return nil, fmt.Errorf("read DCP payload: %w", err)
 	}
@@ -122,44 +117,10 @@ func (db *DCPBridge) readDCPReply() (*dcpReadResult, error) {
 	return &dcpReadResult{Frame: reply, RawFrame: rawFrame}, nil
 }
 
-func (db *DCPBridge) Close() error {
-	db.connected = false
-	if db.port != nil {
-		return db.port.Close()
-	}
-	return nil
-}
-
 func (db *DCPBridge) SendURPC(ctx context.Context, req *protocol.URPCRequest) (*protocol.URPCAck, error) {
 	return nil, fmt.Errorf("DCPBridge does not support uRPC transport")
 }
 
 func (db *DCPBridge) Transport() TransportType {
 	return TransportDCP
-}
-
-func (db *DCPBridge) IsConnected() bool {
-	return db.connected
-}
-
-func (db *DCPBridge) Reconnect() error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	if db.port != nil {
-		db.port.Close()
-	}
-	mode := &goserial.Mode{BaudRate: db.baudrate}
-	p, err := goserial.Open(db.channel, mode)
-	if err != nil {
-		db.connected = false
-		return fmt.Errorf("reconnect serial %s: %w", db.channel, err)
-	}
-	if err := p.SetReadTimeout(500 * time.Millisecond); err != nil {
-		db.connected = false
-		return fmt.Errorf("set read timeout on reconnect: %w", err)
-	}
-	db.port = p
-	db.connected = true
-	slog.Info("DCP 串口重连成功", "channel", db.channel, "baudrate", db.baudrate)
-	return nil
 }

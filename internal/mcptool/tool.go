@@ -6,16 +6,10 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/ng/devagent/internal/model"
-	"github.com/ng/devagent/internal/protocol"
 )
 
 func CompileTool(deviceID string, cap model.Capability, maintenance bool) mcp.Tool {
 	name := fmt.Sprintf("%s.%s", deviceID, cap.Name)
-	intentID := cap.IntentID
-	if intentID == 0 {
-		intentID = protocol.IntentID(deviceID + "." + cap.Name)
-	}
-	_ = intentID
 	desc := cap.Description
 
 	if maintenance {
@@ -38,8 +32,8 @@ func CompileTool(deviceID string, cap model.Capability, maintenance bool) mcp.To
 		switch prop.Type {
 		case "integer":
 			intOpts := []mcp.PropertyOption{}
-			for _, v := range prop.Enum {
-				intOpts = append(intOpts, mcp.Enum(fmt.Sprintf("%d", v)))
+			if len(prop.Enum) > 0 {
+				intOpts = append(intOpts, enumOption(prop.Enum))
 			}
 			if prop.Min != nil {
 				intOpts = append(intOpts, mcp.Min(int(*prop.Min)))
@@ -65,6 +59,9 @@ func CompileTool(deviceID string, cap model.Capability, maintenance bool) mcp.To
 			opts = append(opts, mcp.WithBoolean(propName, boolOpts...))
 		case "number":
 			numOpts := []mcp.PropertyOption{}
+			if len(prop.Enum) > 0 {
+				numOpts = append(numOpts, enumOption(prop.Enum))
+			}
 			if prop.Min != nil {
 				numOpts = append(numOpts, mcp.Min(*prop.Min))
 			}
@@ -79,4 +76,17 @@ func CompileTool(deviceID string, cap model.Capability, maintenance bool) mcp.To
 	}
 
 	return mcp.NewTool(name, opts...)
+}
+
+// enumOption 生成把属性 enum 以正确 JSON 类型写入 schema 的选项。
+// mcp.Enum 只接受 string 且每次调用都会覆盖 schema["enum"]（多次调用只会保留最后一个值），
+// 因此这里把整数/浮点枚举直接写成数值数组，生成合法的 JSON Schema。
+func enumOption(enums []int) mcp.PropertyOption {
+	return func(schema map[string]any) {
+		vals := make([]any, 0, len(enums))
+		for _, v := range enums {
+			vals = append(vals, float64(v))
+		}
+		schema["enum"] = vals
+	}
 }

@@ -16,16 +16,6 @@ func TestProgressTracker_RegisterAndGet(t *testing.T) {
 	}
 }
 
-func TestProgressTracker_UpdateProgress(t *testing.T) {
-	pt := NewProgressTracker()
-	pt.Register("job_1", "req_1", "shelf_01")
-	pt.UpdateProgress("job_1", 50, "pending")
-	job, _ := pt.GetJob("job_1")
-	if job.Progress != 50 {
-		t.Errorf("expected progress 50, got %d", job.Progress)
-	}
-}
-
 func TestProgressTracker_Complete(t *testing.T) {
 	pt := NewProgressTracker()
 	pt.Register("job_1", "req_1", "shelf_01")
@@ -33,5 +23,15 @@ func TestProgressTracker_Complete(t *testing.T) {
 	job, _ := pt.GetJob("job_1")
 	if job.Status != "completed" {
 		t.Errorf("expected status 'completed', got '%s'", job.Status)
+	}
+}
+
+func TestProgressTracker_UpdateProgress(t *testing.T) {
+	pt := NewProgressTracker()
+	pt.Register("job_1", "req_1", "shelf_01")
+	pt.UpdateProgress("job_1", 50, "pending")
+	job, _ := pt.GetJob("job_1")
+	if job.Progress != 50 {
+		t.Errorf("expected progress 50, got %d", job.Progress)
 	}
 }

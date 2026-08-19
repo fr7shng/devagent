@@ -16,9 +16,9 @@ type RegisteredDevice struct {
 }
 
 type DeviceRegistry struct {
-	devices    map[string]*RegisteredDevice
-	mu         sync.RWMutex
-	statePath  string
+	devices   map[string]*RegisteredDevice
+	mu        sync.RWMutex
+	statePath string
 }
 
 func NewDeviceRegistry() *DeviceRegistry {
@@ -118,9 +118,11 @@ func (reg *DeviceRegistry) Restore() error {
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
 	for _, cfg := range cfgs {
+		// 快照恢复的设备视为静态：否则无心跳源会被 RemoveStale 在超时后误删。
 		reg.devices[cfg.Device.ID] = &RegisteredDevice{
 			Config:   cfg,
 			LastSeen: time.Now(),
+			static:   true,
 		}
 	}
 	return nil

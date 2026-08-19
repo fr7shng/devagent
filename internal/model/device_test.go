@@ -113,3 +113,43 @@ func TestRouteTable_StaleGateways(t *testing.T) {
 		t.Errorf("expected no offline, got %v", offline)
 	}
 }
+
+func TestRouteTable_DevicesByGateway(t *testing.T) {
+	rt := NewRouteTable()
+	rt.Register(&GatewayMeta{ID: "gw_1", URL: "http://gw1:8080", Devices: []string{"shelf_01", "shelf_02"}})
+
+	devs := rt.DevicesByGateway("gw_1")
+	if len(devs) != 2 {
+		t.Fatalf("expected 2 devices, got %v", devs)
+	}
+	if len(rt.DevicesByGateway("ghost")) != 0 {
+		t.Error("unknown gateway should return no devices")
+	}
+}
+
+func TestRouteTable_Gateways(t *testing.T) {
+	rt := NewRouteTable()
+	rt.Register(&GatewayMeta{ID: "gw_1", URL: "http://gw1:8080", Devices: []string{"shelf_01"}})
+
+	gws := rt.Gateways()
+	if len(gws) != 1 || gws[0].ID != "gw_1" {
+		t.Errorf("expected 1 gateway gw_1, got %+v", gws)
+	}
+}
+
+func TestDeviceConfig_Sanitized(t *testing.T) {
+	cfg := DeviceConfig{
+		Device: Device{ID: "shelf_01", Name: "货架", Type: "mcu_proxy"},
+		Capabilities: []Capability{
+			{Name: "set_relay", Implementation: Implementation{HMACSecret: "s3cret"}},
+		},
+	}
+	san := cfg.Sanitized()
+	if san.Capabilities[0].Implementation.HMACSecret != "" {
+		t.Error("Sanitized should strip HMAC secret")
+	}
+	// 原始配置不被污染。
+	if cfg.Capabilities[0].Implementation.HMACSecret != "s3cret" {
+		t.Error("original config must not be mutated")
+	}
+}

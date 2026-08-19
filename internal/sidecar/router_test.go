@@ -1,4 +1,4 @@
-﻿package sidecar
+package sidecar
 
 import (
 	"context"
@@ -71,7 +71,15 @@ func TestAddStaticGateway(t *testing.T) {
 	if _, ok := rt.Lookup("auto_pc"); !ok {
 		t.Error("expected device from static gateway to be routed")
 	}
-	if _, ok := router.conns["gw_static"]; !ok {
-		t.Error("expected static gateway registered for health checks")
+	// 静态网关注入路由表，并纳入健康检查（不再维护并行的 conns 映射）。
+	found := false
+	for _, gw := range rt.Gateways() {
+		if gw.ID == "gw_static" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected static gateway registered in route table for health checks")
 	}
 }

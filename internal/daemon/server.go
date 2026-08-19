@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -149,31 +150,35 @@ func (ds *DaemonServer) loadConfig(path string) error {
 	ds.registerDeviceTools(cfg)
 
 	if cfg.Device.Type == "mcu_proxy" {
-		if len(cfg.Capabilities) > 0 {
-			proto := cfg.Capabilities[0].Implementation.Protocol
-			if proto == "DCP" || proto == "dcp" {
+		if len(cfg.Capabilities) == 0 {
+			slog.Warn("mcu_proxy 设备未声明 capabilities，跳过 HAL 初始化")
+		} else {
+			impl := cfg.Capabilities[0].Implementation
+			if impl.Protocol == "DCP" || impl.Protocol == "dcp" {
 				dcpBridge := NewDCPBridge()
-				if sec := cfg.Capabilities[0].Implementation.HMACSecret; sec != "" {
-					dcpBridge.SetHMACSecret([]byte(sec))
+				if impl.HMACSecret != "" {
+					dcpBridge.SetHMACSecret([]byte(impl.HMACSecret))
 					slog.Info("DCP 串口 HMAC 已启用")
 				}
+				dcpBridge.SetRetry(impl.Retry)
 				ds.hal = dcpBridge
 			} else {
-				ds.hal = NewSerialBridge()
+				sb := NewSerialBridge()
+				sb.SetRetry(impl.Retry)
+				ds.hal = sb
 			}
-		} else {
-			ds.hal = NewSerialBridge()
-		}
-		if ds.hal != nil {
-			channel := cfg.Capabilities[0].Implementation.Channel
-			baudrate := cfg.Capabilities[0].Implementation.Baudrate
-			if baudrate == 0 {
-				baudrate = 115200
-			}
-			if err := ds.hal.Open(channel, baudrate); err != nil {
-				slog.Error("HAL 串口打开失败，将后台重试", "channel", channel, "baudrate", baudrate, "error", err)
+			if impl.Channel == "" {
+				slog.Warn("mcu_proxy 能力未指定 channel，跳过串口打开")
 			} else {
-				slog.Info("HAL 串口已打开", "channel", channel, "baudrate", baudrate)
+				baudrate := impl.Baudrate
+				if baudrate == 0 {
+					baudrate = 115200
+				}
+				if err := ds.hal.Open(impl.Channel, baudrate); err != nil {
+					slog.Error("HAL 串口打开失败，将后台重试", "channel", impl.Channel, "baudrate", baudrate, "error", err)
+				} else {
+					slog.Info("HAL 串口已打开", "channel", impl.Channel, "baudrate", baudrate)
+				}
 			}
 		}
 	}
@@ -259,11 +264,18 @@ func (ds *DaemonServer) invokeCore(ctx context.Context, deviceID string, cap mod
 	if err != nil {
 		return nil, fmt.Errorf("uRPC send failed: %w", err)
 	}
-	return &invokeResult{
+
+	// 背压反馈：设备队列满或显式 BUSY 时返回 DEVICE_BUSY + 重试提示。
+	result := &invokeResult{
 		Status:   protocol.StatusString(ack.Status),
 		Protocol: "urpc",
 		Result:   map[string]any{"queue_depth": ack.QueueDepth},
-	}, nil
+	}
+	if ack.Status == protocol.StatusBusy || ack.QueueDepth >= busyQueueDepthThreshold {
+		result.Status = StatusDeviceBusy
+		result.Result.(map[string]any)["retry_after_ms"] = 2000
+	}
+	return result, nil
 }
 
 // makeInvokeHandler 提供 Daemon 作为独立 MCP 入口时的设备工具调用。
@@ -536,8 +548,13 @@ func (ds *DaemonServer) handleHTTPInvoke(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err != nil {
-		respMsg.Status = "error"
-		respMsg.Message = err.Error()
+		if errors.Is(err, ErrDeviceTimeout) {
+			respMsg.Status = StatusTimeout
+			respMsg.Message = "设备无响应（重试次数耗尽）"
+		} else {
+			respMsg.Status = "error"
+			respMsg.Message = err.Error()
+		}
 	} else {
 		respMsg.Status = result.Status
 		respMsg.Result = result.Result
@@ -551,14 +568,42 @@ func (ds *DaemonServer) handleHTTPDevices(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if !ds.authorized(r) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(&protocol.SSEMessage{
+			Type:      "invoke_result",
+			Status:    StatusUnauthorized,
+			Message:   "missing or invalid token",
+			Timestamp: time.Now().Unix(),
+		})
+		return
+	}
+
 	devices := ds.registry.ListDevices()
 	cfgs := make([]model.DeviceConfig, 0, len(devices))
 	for _, d := range devices {
-		cfgs = append(cfgs, d.Config)
+		// 对外暴露前剥离 HMAC 密钥等敏感字段。
+		cfgs = append(cfgs, d.Config.Sanitized())
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cfgs)
+}
+
+// authorized 校验 Bearer token；未配置鉴权（secret 为空）时放行。
+func (ds *DaemonServer) authorized(r *http.Request) bool {
+	if ds.tokenManager == nil {
+		return true
+	}
+	tokenHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if tokenHeader == "" {
+		return false
+	}
+	if _, err := ds.tokenManager.Verify(tokenHeader); err != nil {
+		return false
+	}
+	return true
 }
 
 func (ds *DaemonServer) handleHealthz(w http.ResponseWriter, r *http.Request) {

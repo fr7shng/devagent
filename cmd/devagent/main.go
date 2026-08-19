@@ -66,6 +66,16 @@ func main() {
 			srv.UnregisterDeviceTools(deviceID)
 		})
 
+		// 网关进入/退出维护状态时，重新编译该网关下设备的工具，
+		// 使 [维护中] 描述与 ONLINE 恢复即时生效（spec 5.3 状态机）。
+		rt.OnStatusChange(func(gwID, oldStatus, newStatus string) {
+			if newStatus == model.GatewayMaintenance || newStatus == model.GatewayOnline {
+				for _, deviceID := range rt.DevicesByGateway(gwID) {
+					srv.RefreshDeviceTools(deviceID)
+				}
+			}
+		})
+
 		for _, gw := range gcfg.Sidecar.StaticGateways {
 			if gw.ID == "" || gw.URL == "" {
 				slog.Warn("静态网关配置缺少 id 或 url", "gateway", gw)

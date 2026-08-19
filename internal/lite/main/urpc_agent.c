@@ -19,6 +19,11 @@ static QueueHandle_t cmd_queue;
 static uint8_t rx_buffer[URPC_RX_BUF_SIZE];
 static uint8_t seq_counter = 0;
 
+/* 去重：缓存最近一次 ACK，宿主超时重发同一 seq 时直接重发缓存 ACK，避免重复执行。 */
+static uint8_t last_seq = 0;
+static uint8_t last_ack[5];
+static uint8_t has_last_ack = 0;
+
 static uint8_t crc8(const uint8_t *data, size_t len) {
     uint8_t crc = 0x00;
     for (size_t i = 0; i < len; i++) {
@@ -34,20 +39,26 @@ static uint8_t crc8(const uint8_t *data, size_t len) {
     return crc;
 }
 
-static void send_ack(uint8_t seq, uint8_t status, uint8_t queue_depth) {
+static void send_ack(uint8_t seq, uint8_t status, uint8_t queue_depth, uint8_t cache) {
     uint8_t ack[5];
     ack[0] = URPC_HEADER_ACK;
     ack[1] = seq;
     ack[2] = status;
     ack[3] = queue_depth;
     ack[4] = crc8(&ack[1], 3);
+    /* 仅缓存合法指令的 ACK；畸形帧的错误 ACK 不污染缓存，避免重试被钉死。 */
+    if (cache) {
+        memcpy(last_ack, ack, 5);
+        last_seq = seq;
+        has_last_ack = 1;
+    }
     uart_write_bytes(UART_NUM_0, ack, 5);
 }
 
 static void process_frame(const uint8_t *frame, size_t len) {
     if (len < 4 || frame[0] != URPC_HEADER_REQ) {
         ESP_LOGW(TAG, "invalid frame header");
-        send_ack(0, 0xFF, 0);
+        send_ack(0, 0xFF, 0, 0);
         return;
     }
 
@@ -57,14 +68,20 @@ static void process_frame(const uint8_t *frame, size_t len) {
 
     if (len < 4 + payload_len + 1) {
         ESP_LOGW(TAG, "frame too short");
-        send_ack(seq, 0xFF, 0);
+        send_ack(seq, 0xFF, 0, 0);
         return;
     }
 
     uint8_t expected_crc = crc8(&frame[1], 3 + payload_len);
     if (frame[4 + payload_len] != expected_crc) {
         ESP_LOGW(TAG, "CRC mismatch");
-        send_ack(seq, 0xFF, 0);
+        send_ack(seq, 0xFF, 0, 0);
+        return;
+    }
+
+    /* 重复帧（同一 seq）直接重发缓存的 ACK，不重复执行设备操作。 */
+    if (has_last_ack && seq == last_seq) {
+        uart_write_bytes(UART_NUM_0, last_ack, 5);
         return;
     }
 
@@ -77,28 +94,28 @@ static void process_frame(const uint8_t *frame, size_t len) {
                 uint8_t state = frame[5];
                 if (pin < 1 || pin > 3) {
                     ESP_LOGW(TAG, "pin out of range: %d", pin);
-                    send_ack(seq, 0x02, queue_depth);
+                    send_ack(seq, 0x02, queue_depth, 1);
                     break;
                 }
                 if (state > 1) {
                     ESP_LOGW(TAG, "invalid state: %d", state);
-                    send_ack(seq, 0x02, queue_depth);
+                    send_ack(seq, 0x02, queue_depth, 1);
                     break;
                 }
                 ESP_LOGI(TAG, "set_relay: pin=%d state=%d", pin, state);
                 gpio_set_level(pin, state);
             }
-            send_ack(seq, 0x00, queue_depth);
+            send_ack(seq, 0x00, queue_depth, 1);
             break;
         }
         case 0xB1: {
             ESP_LOGI(TAG, "read_temp");
-            send_ack(seq, 0x00, queue_depth);
+            send_ack(seq, 0x00, queue_depth, 1);
             break;
         }
         default:
             ESP_LOGW(TAG, "unknown cmd: 0x%02X", cmd);
-            send_ack(seq, 0x02, queue_depth);
+            send_ack(seq, 0x02, queue_depth, 1);
             break;
     }
 }

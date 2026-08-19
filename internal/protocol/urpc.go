@@ -8,10 +8,10 @@ const (
 	HeaderRequest = 0xAA
 	HeaderAck     = 0xBB
 
-	StatusOK        = 0x00
-	StatusBusy      = 0x01
+	StatusOK         = 0x00
+	StatusBusy       = 0x01
 	StatusInvalidCmd = 0x02
-	StatusError     = 0xFF
+	StatusError      = 0xFF
 
 	MaxPayloadSize = 64
 )

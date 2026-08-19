@@ -4,44 +4,30 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/ng/devagent/internal/protocol"
-	goserial "go.bug.st/serial"
 )
 
+const maxURPCRetries = 3
+
+// SerialBridge 通过串口承载 uRPC 协议，负责帧收发与超时重试。
 type SerialBridge struct {
-	port       goserial.Port
-	channel    string
-	baudrate   int
-	mu         sync.Mutex
-	connected  bool
+	serialPort
+	retry int
 }
 
 func NewSerialBridge() *SerialBridge {
-	return &SerialBridge{}
+	return &SerialBridge{retry: maxURPCRetries}
 }
 
-func (sb *SerialBridge) Open(channel string, baudrate int) error {
-	mode := &goserial.Mode{
-		BaudRate: baudrate,
+// SetRetry 覆盖默认重试次数（<=0 时回落到默认值）。
+func (sb *SerialBridge) SetRetry(n int) {
+	if n <= 0 {
+		n = maxURPCRetries
 	}
-	p, err := goserial.Open(channel, mode)
-	if err != nil {
-		return fmt.Errorf("open serial %s: %w", channel, err)
-	}
-	if err := p.SetReadTimeout(500 * time.Millisecond); err != nil {
-		return fmt.Errorf("set read timeout: %w", err)
-	}
-	sb.port = p
-	sb.channel = channel
-	sb.baudrate = baudrate
-	sb.connected = true
-	return nil
+	sb.retry = n
 }
-
-const maxURPCRetries = 3
 
 func (sb *SerialBridge) SendURPC(ctx context.Context, req *protocol.URPCRequest) (*protocol.URPCAck, error) {
 	sb.mu.Lock()
@@ -58,7 +44,7 @@ func (sb *SerialBridge) SendURPC(ctx context.Context, req *protocol.URPCRequest)
 		return nil, fmt.Errorf("encode request: %w", err)
 	}
 
-	for attempt := 0; attempt < maxURPCRetries; attempt++ {
+	for attempt := 0; attempt < sb.retry; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("context cancelled: %w", err)
 		}
@@ -75,7 +61,7 @@ func (sb *SerialBridge) SendURPC(ctx context.Context, req *protocol.URPCRequest)
 		return ack, nil
 	}
 
-	return nil, fmt.Errorf("uRPC failed after %d retries", maxURPCRetries)
+	return nil, fmt.Errorf("%w: uRPC failed after %d retries", ErrDeviceTimeout, sb.retry)
 }
 
 func (sb *SerialBridge) readURPCAck() (*protocol.URPCAck, error) {
@@ -121,44 +107,10 @@ func (sb *SerialBridge) readURPCAck() (*protocol.URPCAck, error) {
 	return ack, nil
 }
 
-func (sb *SerialBridge) Close() error {
-	sb.connected = false
-	if sb.port != nil {
-		return sb.port.Close()
-	}
-	return nil
-}
-
 func (sb *SerialBridge) SendDCP(ctx context.Context, seq byte, intentID uint16, params map[string]any) (*protocol.DCPFrame, error) {
 	return nil, fmt.Errorf("SerialBridge does not support DCP transport")
 }
 
 func (sb *SerialBridge) Transport() TransportType {
 	return TransportURP
-}
-
-func (sb *SerialBridge) IsConnected() bool {
-	return sb.connected
-}
-
-func (sb *SerialBridge) Reconnect() error {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-	if sb.port != nil {
-		sb.port.Close()
-	}
-	mode := &goserial.Mode{BaudRate: sb.baudrate}
-	p, err := goserial.Open(sb.channel, mode)
-	if err != nil {
-		sb.connected = false
-		return fmt.Errorf("reconnect serial %s: %w", sb.channel, err)
-	}
-	if err := p.SetReadTimeout(500 * time.Millisecond); err != nil {
-		sb.connected = false
-		return fmt.Errorf("set read timeout on reconnect: %w", err)
-	}
-	sb.port = p
-	sb.connected = true
-	slog.Info("串口重连成功", "channel", sb.channel, "baudrate", sb.baudrate)
-	return nil
 }

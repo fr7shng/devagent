@@ -21,9 +21,9 @@ type GatewayMeta struct {
 }
 
 const (
-	GatewayOnline     = "online"
+	GatewayOnline      = "online"
 	GatewayMaintenance = "maintenance"
-	GatewayOffline    = "offline"
+	GatewayOffline     = "offline"
 )
 
 type RouteTable struct {
@@ -132,14 +132,39 @@ func (rt *RouteTable) AllDevices() []map[string]any {
 	for _, gw := range rt.gateways {
 		for _, d := range gw.Devices {
 			result = append(result, map[string]any{
-				"device_id":   d,
-				"gateway_id":  gw.ID,
-				"gateway_url": gw.URL,
-				"status":      gw.Status,
+				"device_id":      d,
+				"gateway_id":     gw.ID,
+				"gateway_url":    gw.URL,
+				"status":         gw.Status,
+				"last_heartbeat": gw.LastHeartbeat,
 			})
 		}
 	}
 	return result
+}
+
+// Gateways 返回当前所有网关元数据的副本，供健康检查等遍历使用。
+func (rt *RouteTable) Gateways() []GatewayMeta {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	result := make([]GatewayMeta, 0, len(rt.gateways))
+	for _, gw := range rt.gateways {
+		gwCopy := *gw
+		gwCopy.Devices = append([]string(nil), gw.Devices...)
+		result = append(result, gwCopy)
+	}
+	return result
+}
+
+// DevicesByGateway 返回某网关当前管辖的设备 ID 列表（副本）。
+func (rt *RouteTable) DevicesByGateway(gwID string) []string {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	gw, ok := rt.gateways[gwID]
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), gw.Devices...)
 }
 
 func (rt *RouteTable) UpdateHeartbeat(gwID string) {

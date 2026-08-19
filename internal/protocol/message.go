@@ -2,6 +2,9 @@ package protocol
 
 import "encoding/json"
 
+// SSEMessage 是 Sidecar 与 Daemon 之间的统一 JSON 信封（type 区分语义），
+// 当前用于 HTTP invoke 请求/响应、限流/鉴权错误；命名保留 "SSE" 以便将来
+// 复用同一结构承载 SSE 推送（register/heartbeat/progress/result/error）。
 type SSEMessage struct {
 	Type       string `json:"type"`
 	DeviceID   string `json:"device_id,omitempty"`

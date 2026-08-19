@@ -89,6 +89,36 @@ func TestCompileToolMaintenance(t *testing.T) {
 	}
 }
 
+// integer 属性的 enum 应还原为数值，而非 mcp.Enum 产出的字符串。
+func TestCompileToolIntegerEnumAsNumbers(t *testing.T) {
+	cap := model.Capability{
+		Name:        "set_relay",
+		Description: "控制继电器",
+		InputSchema: model.InputSchema{
+			Type: "object",
+			Properties: map[string]model.PropertySchema{
+				"pin": {Type: "integer", Enum: []int{1, 2, 3}},
+			},
+			Required: []string{"pin"},
+		},
+	}
+	tool := CompileTool("shelf_01", cap, false)
+	raw, ok := tool.InputSchema.Properties["pin"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected property pin schema map, got %T", tool.InputSchema.Properties["pin"])
+	}
+	enum, ok := raw["enum"].([]any)
+	if !ok {
+		t.Fatalf("expected numeric enum, got %T (%v)", raw["enum"], raw["enum"])
+	}
+	if len(enum) != 3 {
+		t.Errorf("expected 3 enum values, got %v", enum)
+	}
+	if v, ok := enum[0].(float64); !ok || v != 1 {
+		t.Errorf("expected enum[0] == 1, got %v (%T)", enum[0], enum[0])
+	}
+}
+
 func float64Ptr(v float64) *float64 {
 	return &v
 }
